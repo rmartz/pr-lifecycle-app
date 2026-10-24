@@ -14,7 +14,7 @@ relevant to your task before editing code — see
   action, and where its design is still open.
 - [The webhook server](server.md) — how a delivery is verified, mapped to PRs,
   scoped to one repository's token and reconciled; subscribed events, App
-  permissions, the repo allowlist, environment, and the proof-of-concept limits.
+  permissions, the per-tool repo allowlist and its off/shadow/live modes, environment, and the proof-of-concept limits.
 - [Development and CI](development.md) — the toolchain, commands, each CI
   workflow and what it gates, repo hygiene, Dependabot, and where deploy
   automation will go.

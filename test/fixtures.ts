@@ -9,7 +9,7 @@ import type {
 import type { HandlerDeps } from '../src/handler.js';
 import type { LogFields, Logger } from '../src/logger.js';
 import type { Payload } from '../src/payload.js';
-import type { RepoConfig } from '../src/repos.js';
+import type { PrLifecycleConfig } from '../src/run-target.js';
 
 export const BOT_LOGIN = 'rmartz-pr-lifecycle[bot]';
 export const SECRET = 'webhook-secret-for-tests';
@@ -123,9 +123,9 @@ export interface FakeDeps extends HandlerDeps {
   readonly reconciles: ReconcileCall[];
 }
 
-export const TEMPLATE_CONFIG: RepoConfig = {
+export const TEMPLATE_CONFIG: PrLifecycleConfig = {
+  mode: 'shadow',
   policy: { uat: 'on', armAutoMerge: false },
-  dryRun: true,
 };
 
 export function makeDeps(overrides: Partial<HandlerDeps> = {}): FakeDeps {
@@ -137,7 +137,7 @@ export function makeDeps(overrides: Partial<HandlerDeps> = {}): FakeDeps {
   return {
     webhookSecret: SECRET,
     botLogin: BOT_LOGIN,
-    repoConfig: (fullName) =>
+    prLifecycleConfig: (fullName) =>
       fullName.toLowerCase() === 'rmartz/firebase-nextjs-template' ? TEMPLATE_CONFIG : undefined,
     mintToken: (installationId, repo) => {
       minted.push({ installationId, repo });

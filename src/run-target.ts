@@ -10,7 +10,10 @@ import type { EventRepository, EventTarget } from './events.js';
 import type { MintToken } from './installation-token.js';
 import type { LogFields, Logger } from './logger.js';
 import type { FindOpenPulls } from './open-pulls.js';
-import type { RepoConfig } from './repos.js';
+import type { ActiveToolConfig } from './repos.js';
+
+/** pr-lifecycle's settings for a repo it acts on. */
+export type PrLifecycleConfig = ActiveToolConfig<ReconcilePolicy>;
 
 /** The I/O a reconcile run needs, injected so it is testable without the network. */
 export interface RunDeps {
@@ -35,7 +38,7 @@ export interface RunDeps {
  */
 export async function runTarget(
   target: EventTarget,
-  config: RepoConfig,
+  config: PrLifecycleConfig,
   deliveryId: string,
   deps: RunDeps,
 ): Promise<void> {
@@ -67,13 +70,15 @@ async function reconcileOne(
   client: GitHubClient,
   pr: number,
   repository: EventRepository,
-  config: RepoConfig,
+  config: PrLifecycleConfig,
   context: LogFields,
   deps: RunDeps,
 ): Promise<void> {
   try {
-    const result = await deps.reconcile(client, pr, config.policy, { dryRun: config.dryRun });
-    const target = { owner: repository.owner, repo: repository.name, pr, dryRun: config.dryRun };
+    // Shadow plans and logs without writing; only live writes.
+    const dryRun = config.mode !== 'live';
+    const result = await deps.reconcile(client, pr, config.policy, { dryRun });
+    const target = { owner: repository.owner, repo: repository.name, pr, dryRun };
     const json = toReconcileJson(target, result);
     deps.log.info('reconciled', { ...context, pr, result: json });
   } catch (error) {

@@ -1,7 +1,7 @@
 import type { IgnoreReason } from './events.js';
 import { decideEvent } from './events.js';
 import { parsePayload } from './payload.js';
-import type { RepoConfig } from './repos.js';
+import type { PrLifecycleConfig } from './run-target.js';
 import type { RunDeps } from './run-target.js';
 import { runTarget } from './run-target.js';
 import { verifySignature } from './signature.js';
@@ -27,7 +27,8 @@ export interface WebhookResponse {
 export interface HandlerDeps extends RunDeps {
   readonly webhookSecret: string;
   readonly botLogin: string;
-  readonly repoConfig: (fullName: string) => RepoConfig | undefined;
+  /** pr-lifecycle's settings for a repo, or undefined when it is unlisted or `off`. */
+  readonly prLifecycleConfig: (fullName: string) => PrLifecycleConfig | undefined;
 }
 
 function respond(status: number, body: Readonly<Record<string, unknown>>): WebhookResponse {
@@ -59,13 +60,13 @@ export function handleWebhook(request: WebhookRequest, deps: HandlerDeps): Webho
   }
   const decision = decideEvent(eventName, payload, {
     botLogin: deps.botLogin,
-    isEnabled: (fullName) => deps.repoConfig(fullName) !== undefined,
+    isEnabled: (fullName) => deps.prLifecycleConfig(fullName) !== undefined,
   });
   switch (decision.kind) {
     case 'ignore':
       return ignored(decision.reason);
     case 'reconcile': {
-      const config = deps.repoConfig(decision.target.repository.fullName);
+      const config = deps.prLifecycleConfig(decision.target.repository.fullName);
       if (config === undefined) {
         return ignored('repo-not-enabled');
       }
