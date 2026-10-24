@@ -1,0 +1,18 @@
+environments: [production]
+
+deployments:
+  - provider: vercel
+    targets: { production: production }
+
+# The gate project, pr-lifecycle-gate. Run envctl against it with
+# `--deployment-dir deployment/gate` (see docs/development.md).
+services:
+  # The gate App's secrets, managed by
+  # `envctl secrets init|rotate github-app --private-key-file <pem>`.
+  - provider: github-app
+    environments: [production]
+    webhookUrl: https://pr-lifecycle-gate.vercel.app/api/webhook
+    variables:
+      clientId: PR_GATE_CLIENT_ID
+      privateKey: PR_GATE_PRIVATE_KEY
+      webhookSecret: PR_GATE_WEBHOOK_SECRET

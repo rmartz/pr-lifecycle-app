@@ -1,0 +1,4 @@
+environment: production
+variables:
+  # Selects the gate route (src/server-config.ts).
+  PR_APP_ROLE: gate

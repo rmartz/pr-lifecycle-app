@@ -1,7 +1,7 @@
 ---
 type: Reference
 title: Development and CI
-description: The pr-lifecycle-app toolchain and commands, each CI workflow and what it gates, repo hygiene and the pre-commit hook, Dependabot, and where deploy automation will go.
+description: The pr-lifecycle-app toolchain and commands, each CI workflow and what it gates, deploying, rolling back and rotating the actor and gate Vercel projects, repo hygiene and the pre-commit hook, and Dependabot.
 tags: [ci, tooling, dependabot, deploy, conventions]
 ---
 
@@ -71,59 +71,85 @@ service publishes no package, so nothing consumes a conventional subject on
 
 ## Deploy
 
-The server is a Vercel project deployed by **Vercel's Git integration**, so there
-is no deploy workflow here:
+The repo deploys to **two Vercel projects** on the `reed-8753s-projects` team,
+one per [role](server.md#roles-actor-and-gate). Both run the same code from the
+same repo and differ only in their env vars:
+
+| Project             | ID                                 | `PR_APP_ROLE` | URL                                    | envctl config       |
+| ------------------- | ---------------------------------- | ------------- | -------------------------------------- | ------------------- |
+| `pr-lifecycle-app`  | `prj_Hk4QmeVi1BYi48RAPpcne95x3Ptv` | `actor`       | `https://pr-lifecycle-app.vercel.app`  | `deployment/actor/` |
+| `pr-lifecycle-gate` | `prj_kAQC6gawmmBbN1j1ag02pA2TqIGe` | `gate`        | `https://pr-lifecycle-gate.vercel.app` | `deployment/gate/`  |
+
+Each is deployed by **Vercel's Git integration**, so there is no deploy
+workflow here:
 
 - **Production only.** [`vercel.json`](../vercel.json) sets
-  `git.deploymentEnabled` to `main` only, so a push to `main` deploys and branch
-  pushes build no preview. A preview would be useless anyway: the App's webhook
-  points at production. Testing a branch end to end would need a second dev App
-  aimed at a preview URL.
-- **Project and build.** The project is `pr-lifecycle-app` on the
-  `reed-8753s-projects` team, served at `https://pr-lifecycle-app.vercel.app`.
-  The build runs `pnpm run build` as a compile check. The static output is
-  `public/`, which holds only a deny-all [`robots.txt`](../public/robots.txt).
-  Without an explicit output directory, Vercel would serve the repo root as
-  static files.
-  Locally, `vercel link` writes `.vercel/`, which is gitignored.
+  `git.deploymentEnabled` to `main` only, so a push to `main` deploys **both**
+  projects and branch pushes build no preview. A preview would be useless
+  anyway: each App's webhook points at its production URL. Testing a branch
+  end to end would need a second dev App aimed at a preview URL.
+- **Build.** The build runs `pnpm run build` as a compile check. The static
+  output is `public/`, which holds only a deny-all
+  [`robots.txt`](../public/robots.txt). Without an explicit output directory,
+  Vercel would serve the repo root as static files. Locally, `vercel link`
+  writes `.vercel/`, which is gitignored.
 - **Function limits.** `api/webhook.ts` gets `maxDuration: 300`, room for the
   30-second settle wait plus fact-gathering. The webhook itself is acknowledged
   first; see [The webhook server](server.md#a-delivery-step-by-step).
 - **Secrets.** See [Secrets and env vars](#secrets-and-env-vars-envctl). Never
   commit them or put them in Actions logs; `.gitignore` excludes `.env*` and
   `*.pem`.
-- **Rollback.** Promote the previous production deployment in Vercel
-  (`vercel rollback`, or Instant Rollback in the dashboard), then revert on
-  `main`. To stop the App acting on a repo immediately, remove it from
-  [`src/repos.ts`](../src/repos.ts), or clear the App's webhook URL.
+- **Rollback.** Roll back **each project on its own**: promote its previous
+  production deployment (`vercel rollback --scope reed-8753s-projects` from a
+  directory linked to that project, or Instant Rollback in its dashboard), then
+  revert on `main`. A revert redeploys both projects. To stop a tool acting on a
+  repo immediately, set its mode to `off` in [`src/repos.ts`](../src/repos.ts),
+  or clear that App's webhook URL.
 
 ## Secrets and env vars (envctl)
 
-The Vercel project `pr-lifecycle-app` reads three env vars, all on the
-**Production** target only. [`deployment/`](../deployment/manifest.yml) declares
-them for [envctl](https://github.com/rmartz/envctl)'s `github-app` provider:
+Each project's variables are declared for
+[envctl](https://github.com/rmartz/envctl)'s `github-app` provider in its own
+config directory, all on the **Production** target only.
+[`deployment/actor/`](../deployment/actor/manifest.yml) covers the actor and
+[`deployment/gate/`](../deployment/gate/manifest.yml) the gate:
 
-| Variable                      | Kind                     | Managed by                                  |
-| ----------------------------- | ------------------------ | ------------------------------------------- |
-| `PR_LIFECYCLE_CLIENT_ID`      | public, in YAML          | `envctl config push --env production`       |
-| `PR_LIFECYCLE_PRIVATE_KEY`    | Vercel sensitive         | `envctl secrets init` / `rotate github-app` |
-| `PR_LIFECYCLE_WEBHOOK_SECRET` | Vercel sensitive, minted | `envctl secrets init` / `rotate github-app` |
+| Actor variable                | Gate variable            | Kind                     | Managed by                                  |
+| ----------------------------- | ------------------------ | ------------------------ | ------------------------------------------- |
+| `PR_APP_ROLE` (`actor`)       | `PR_APP_ROLE` (`gate`)   | public, in YAML          | `envctl config push --env production`       |
+| `PR_LIFECYCLE_CLIENT_ID`      | `PR_GATE_CLIENT_ID`      | public, in YAML          | `envctl config push --env production`       |
+| `PR_LIFECYCLE_PRIVATE_KEY`    | `PR_GATE_PRIVATE_KEY`    | Vercel sensitive         | `envctl secrets init` / `rotate github-app` |
+| `PR_LIFECYCLE_WEBHOOK_SECRET` | `PR_GATE_WEBHOOK_SECRET` | Vercel sensitive, minted | `envctl secrets init` / `rotate github-app` |
 
-`envctl secrets init github-app --private-key-file <pem>` pushes the private key
-and a generated webhook secret, redeploys production, then points the
-`rmartz-pr-lifecycle` App's webhook at
-`https://pr-lifecycle-app.vercel.app/api/webhook` with that secret.
-The App's webhook must be **Active** first, or envctl refuses before pushing
-anything.
+**Point every envctl command at one project.** envctl reads its config from
+`--deployment-dir` (default `deployment`, which no longer exists here), and
+finds the Vercel project from `.vercel/project.json` or `VERCEL_PROJECT_ID`.
+So always pass both, for the same project:
+
+```bash
+VERCEL_PROJECT_ID=prj_kAQC6gawmmBbN1j1ag02pA2TqIGe VERCEL_TEAM_ID=team_kVIsLOZBHQLTMtnVSltoDb1g envctl config push --env production --deployment-dir deployment/gate
+```
+
+For the actor, use `prj_Hk4QmeVi1BYi48RAPpcne95x3Ptv` and `deployment/actor`.
+Mixing one project's ID with the other's directory would push one App's
+credentials into the other's environment, which is exactly what the split
+prevents.
+
+`envctl secrets init github-app --private-key-file <pem>` (with the same two
+settings) pushes the private key and a generated webhook secret, redeploys
+production, then points the App's webhook at its project's
+`/api/webhook` with that secret. The App's webhook must be **Active** first, or
+envctl refuses before pushing anything, and its Client ID must already be in
+the YAML and pushed, because envctl signs the App JWT with it.
 
 `envctl secrets rotate github-app --private-key-file <pem>` re-mints the webhook
 secret and pushes the PEM as the App's key. It redeploys, proves the key with
 `GET /app`, and only then updates GitHub's webhook config. To rotate the private
 key, generate a new one on the App's settings page and pass that PEM. When the
-run logs the key's `SHA256:` fingerprint, delete the replaced key there, but
-keep any key the `PR_LIFECYCLE_PRIVATE_KEY` Actions secrets in other repos still
-use. The App's permissions and event subscriptions are set by hand on the same
-page. Never commit the PEM (`*.pem` is gitignored).
+run logs the key's `SHA256:` fingerprint, delete the replaced key there. For the
+actor, keep any key the `PR_LIFECYCLE_PRIVATE_KEY` Actions secrets in other
+repos still use. Each App's permissions and event subscriptions are set by hand
+on its settings page. Never commit a PEM (`*.pem` is gitignored).
 
 ## Repo hygiene
 
