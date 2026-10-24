@@ -1,0 +1,4 @@
+environment: production
+variables:
+  # The App's public Client ID; envctl also signs the App JWT as this issuer.
+  PR_LIFECYCLE_CLIENT_ID: Iv23liDeO4LMsYKXJbmZ
