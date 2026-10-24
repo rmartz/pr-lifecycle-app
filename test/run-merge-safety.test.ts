@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { EventRepository } from '../src/events.js';
+import { mergeSafetyName } from '../src/merge-safety-evaluate.js';
 import {
-  mergeSafetyName,
   RATE_LIMIT_FLOOR,
   runMergeSafetyEvaluate,
   runMergeSafetyInvalidate,

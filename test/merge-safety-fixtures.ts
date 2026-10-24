@@ -1,4 +1,4 @@
-import type { MergeSafetyConfig } from '../src/run-merge-safety.js';
+import type { MergeSafetyConfig } from '../src/merge-safety-evaluate.js';
 
 export const REPO = 'rmartz/firebase-nextjs-template';
 

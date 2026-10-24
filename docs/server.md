@@ -89,7 +89,8 @@ last needs Actions read) for merge-safety.
 
 The gate runs [`@rmartz/merge-safety`](https://github.com/rmartz/merge-safety)
 in-process, so a repo needs no `merge-safety.yml`
-([`src/run-merge-safety.ts`](../src/run-merge-safety.ts)). The library's
+([`src/run-merge-safety.ts`](../src/run-merge-safety.ts),
+[`src/merge-safety-evaluate.ts`](../src/merge-safety-evaluate.ts)). The library's
 **API-backed fact source** (`makeApiGitRunner`) answers its git queries from
 the REST compare and commit APIs, so no checkout is needed. It fails closed past
 the compare API's caps and reports `Could not evaluate`. The glue the CLI does

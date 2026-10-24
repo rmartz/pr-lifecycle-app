@@ -6,12 +6,9 @@ import { readDelivery, respond } from './handler.js';
 import type { LogFields } from './logger.js';
 import { decideMergeSafetyEvent } from './merge-safety-events.js';
 import type { Payload } from './payload.js';
-import type { MergeSafetyConfig, MergeSafetyDeps } from './run-merge-safety.js';
-import {
-  MERGE_SAFETY_SHADOW_NAME,
-  runMergeSafetyEvaluate,
-  runMergeSafetyInvalidate,
-} from './run-merge-safety.js';
+import type { MergeSafetyConfig, MergeSafetyDeps } from './merge-safety-evaluate.js';
+import { MERGE_SAFETY_SHADOW_NAME } from './merge-safety-evaluate.js';
+import { runMergeSafetyEvaluate, runMergeSafetyInvalidate } from './run-merge-safety.js';
 import type { PrPolicyConfig, PrPolicyDeps } from './run-pr-policy.js';
 import { runPrPolicy } from './run-pr-policy.js';
 

@@ -6,7 +6,7 @@ import type {
 } from '@rmartz/pr-policy';
 import type { GateHandlerDeps } from '../src/gate-handler.js';
 import type { Payload } from '../src/payload.js';
-import type { MergeSafetyConfig } from '../src/run-merge-safety.js';
+import type { MergeSafetyConfig } from '../src/merge-safety-evaluate.js';
 import type { PrPolicyConfig } from '../src/run-pr-policy.js';
 import { INSTALLATION_ID, makeLogger, makeRepository, SECRET } from './fixtures.js';
 
