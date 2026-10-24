@@ -7,7 +7,9 @@
     "target": "ES2023",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "lib": ["ES2023"],
+    // DOM supplies the Fetch API types (Request, Response) for Vercel's own
+    // per-function type-check, which doesn't pick them up from @types/node.
+    "lib": ["ES2023", "DOM"],
     "types": ["node"],
     "strict": true,
     "noUncheckedIndexedAccess": true,

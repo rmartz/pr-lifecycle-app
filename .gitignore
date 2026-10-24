@@ -13,3 +13,5 @@ coverage/
 .env
 .env.*
 *.pem
+# The Vercel CLI's per-checkout project link.
+.vercel/
