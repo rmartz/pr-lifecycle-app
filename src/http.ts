@@ -8,11 +8,20 @@ import type { Logger } from './logger.js';
 import { createJsonLogger } from './logger.js';
 import { createOpenPullsFinder } from './open-pulls.js';
 import { toolConfig } from './repos.js';
+import { createSandboxGit } from './sandbox-git.js';
 import type { ServerConfig } from './server-config.js';
 import { readServerConfig } from './server-config.js';
+import { createVercelSandboxOpener } from './vercel-sandbox.js';
 
 /** Keeps a promise running after the response is sent (Vercel's `waitUntil`). */
 export type WaitUntil = (promise: Promise<unknown>) => void;
+
+/**
+ * One sandboxed git command, the VM's boot included before the first. Measured
+ * at about 0.25–0.5 s to boot and 0.5 s for a fetch (rmartz/pr-lifecycle-app#8);
+ * a minute means the sandbox is stuck, not slow.
+ */
+export const GIT_COMMAND_TIMEOUT_MS = 60_000;
 
 /** Wires the actor role's production dependencies around its handler. */
 export function productionDeps(config: ServerConfig, log: Logger): HandlerDeps {
@@ -27,6 +36,10 @@ export function productionDeps(config: ServerConfig, log: Logger): HandlerDeps {
     }),
     createClient: createHttpClient,
     findOpenPulls: createOpenPullsFinder(),
+    createGit: (token) =>
+      createSandboxGit(token, createVercelSandboxOpener(), {
+        commandTimeoutMs: GIT_COMMAND_TIMEOUT_MS,
+      }),
     reconcile: reconcilePullRequest,
     log,
   };

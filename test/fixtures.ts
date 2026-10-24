@@ -10,6 +10,7 @@ import type { HandlerDeps } from '../src/handler.js';
 import type { LogFields, Logger } from '../src/logger.js';
 import type { Payload } from '../src/payload.js';
 import type { PrLifecycleConfig } from '../src/run-target.js';
+import type { SandboxGit } from '../src/sandbox-git.js';
 
 export const BOT_LOGIN = 'rmartz-pr-lifecycle[bot]';
 export const SECRET = 'webhook-secret-for-tests';
@@ -121,6 +122,16 @@ export interface FakeDeps extends HandlerDeps {
   readonly clients: HttpClientOptions[];
   readonly lookups: { token: string; owner: string; repo: string; sha: string }[];
   readonly reconciles: ReconcileCall[];
+  /** The token of each `createGit` call, and `closed` once its `close` ran. */
+  readonly gits: { token: string; closed: boolean }[];
+}
+
+/** A carry-over git that never runs a command, as for a PR with no earlier review. */
+export function makeSandboxGit(onClose: () => string | undefined = () => undefined): SandboxGit {
+  return {
+    git: { run: () => Promise.reject(new Error('no git in this test')) },
+    close: () => Promise.resolve(onClose()),
+  };
 }
 
 export const TEMPLATE_CONFIG: PrLifecycleConfig = {
@@ -133,6 +144,7 @@ export function makeDeps(overrides: Partial<HandlerDeps> = {}): FakeDeps {
   const clients: HttpClientOptions[] = [];
   const lookups: FakeDeps['lookups'] = [];
   const reconciles: ReconcileCall[] = [];
+  const gits: FakeDeps['gits'] = [];
   const log = makeLogger();
   return {
     webhookSecret: SECRET,
@@ -151,6 +163,14 @@ export function makeDeps(overrides: Partial<HandlerDeps> = {}): FakeDeps {
       lookups.push({ token, owner, repo, sha });
       return Promise.resolve([51]);
     },
+    createGit: (token) => {
+      const entry = { token, closed: false };
+      gits.push(entry);
+      return makeSandboxGit(() => {
+        entry.closed = true;
+        return undefined;
+      });
+    },
     reconcile: (client, pr, policy, options) => {
       reconciles.push({ client, pr, policy, options });
       return Promise.resolve(makeReconcileResult());
@@ -161,5 +181,6 @@ export function makeDeps(overrides: Partial<HandlerDeps> = {}): FakeDeps {
     clients,
     lookups,
     reconciles,
+    gits,
   };
 }

@@ -155,4 +155,9 @@ describe('productionDeps', () => {
     const deps = productionDeps(CONFIG, makeLogger());
     expect(deps.prLifecycleConfig('rmartz/firebase-nextjs-template')?.mode).toBe('live');
   });
+
+  it('boots no sandbox for a run that never calls git', async () => {
+    const deps = productionDeps(CONFIG, makeLogger());
+    await expect(deps.createGit('ghs_token').close()).resolves.toBeUndefined();
+  });
 });
