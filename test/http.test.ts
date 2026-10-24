@@ -71,6 +71,6 @@ describe('productionDeps', () => {
       { clientId: 'Iv1.client', privateKey: 'key', webhookSecret: 's', botLogin: 'b[bot]' },
       makeLogger(),
     );
-    expect(deps.repoConfig('rmartz/firebase-nextjs-template')).toBeDefined();
+    expect(deps.prLifecycleConfig('rmartz/firebase-nextjs-template')?.mode).toBe('live');
   });
 });

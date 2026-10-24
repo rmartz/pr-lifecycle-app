@@ -38,12 +38,24 @@ describe('runTarget', () => {
     ]);
   });
 
-  it("reconciles with the repo's policy and dry-run setting", async () => {
+  it('reconciles a shadow repo with its policy as a dry run', async () => {
     const deps = makeDeps();
     await runTarget(makeTarget(), TEMPLATE_CONFIG, 'd-1', deps);
     expect(deps.reconciles.map(({ pr, policy, options }) => ({ pr, policy, options }))).toEqual([
       { pr: 31, policy: { uat: 'on', armAutoMerge: false }, options: { dryRun: true } },
     ]);
+  });
+
+  it('reconciles a live repo with writes', async () => {
+    const deps = makeDeps();
+    await runTarget(makeTarget(), { ...TEMPLATE_CONFIG, mode: 'live' }, 'd-1', deps);
+    expect(deps.reconciles.map(({ options }) => options)).toEqual([{ dryRun: false }]);
+  });
+
+  it('logs a live result as not a dry run', async () => {
+    const deps = makeDeps();
+    await runTarget(makeTarget(), { ...TEMPLATE_CONFIG, mode: 'live' }, 'd-1', deps);
+    expect(deps.log.entries[0]?.fields).toMatchObject({ result: { dryRun: false } });
   });
 
   it('logs the result in the CLI --json shape', async () => {

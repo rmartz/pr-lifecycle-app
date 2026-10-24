@@ -1,7 +1,7 @@
 ---
 type: Reference
 title: The webhook server
-description: How a delivery flows through the server — signature check, event-to-PR mapping, the repo allowlist, per-repo-scoped installation tokens, background reconciles — plus its subscribed events, App permissions, environment and the proof-of-concept simplifications.
+description: How a delivery flows through the server — signature check, event-to-PR mapping, the per-tool repo allowlist and modes, per-repo-scoped installation tokens, background reconciles — plus its subscribed events, App permissions, environment and the proof-of-concept simplifications.
 tags: [architecture, webhooks, security, github-app, config]
 ---
 
@@ -71,21 +71,51 @@ writes (the sign-off status, and arming once a repo turns it on). No
 
 ## Repo allowlist
 
-The App is installed on repos that still run `rmartz/pr-lifecycle-action`, and a
-repo must never be reconciled by both. So the server acts only on the repos
-listed in [`src/repos.ts`](../src/repos.ts), each with its policy and a `dryRun`
-flag. Enabling a repo is a reviewed code change, not a runtime setting.
+The App is installed on repos that still run the tools' actions, and a repo
+must never be handled by both the App and the action for one tool. So each tool
+acts only on the repos listed in [`src/repos.ts`](../src/repos.ts). Enabling a
+repo is a reviewed code change, never a runtime setting or a file read from a
+PR head (a PR could otherwise switch off the gate it is waiting on).
 
-| Repo                              | Policy                | Mode                   |
-| --------------------------------- | --------------------- | ---------------------- |
-| `rmartz/firebase-nextjs-template` | `uat: on`, arming off | live (`dryRun: false`) |
+Each repo maps each tool to a `mode` and that tool's policy:
 
-**Cutting a repo over** follows two steps. First, enable it with
-`dryRun: true` (shadow mode) while it still runs the action, and compare the
-logged plans with the action's results. Then, in the same window, set
-`dryRun: false` here and delete the repo's `pr-lifecycle.yml`. Until the second
-step merges, both may reconcile; they compute the same plan, so the overlap is
-harmless.
+```ts
+'owner/name': {
+  prLifecycle: { mode: 'live', policy: { uat: 'on', armAutoMerge: false } },
+},
+```
+
+| Mode     | Meaning                                                              |
+| -------- | -------------------------------------------------------------------- |
+| `off`    | The tool ignores the repo, exactly as if it were unlisted.           |
+| `shadow` | Plan and log without writing. The repo still runs the tool's action. |
+| `live`   | Plan and write. The repo no longer runs the action.                  |
+
+A tool left out of a repo's entry is `off`. Only `shadow` and `live` reach a
+run: the lookup returns nothing for `off`, so a delivery for that repo is
+acknowledged as `repo-not-enabled`. Each tool cuts over per repo on its own.
+
+| Repo                              | Tool         | Mode   | Policy                |
+| --------------------------------- | ------------ | ------ | --------------------- |
+| `rmartz/firebase-nextjs-template` | pr-lifecycle | `live` | `uat: on`, arming off |
+
+### Cutting a tool over on a repo
+
+**A label writer** (pr-lifecycle) takes two steps:
+
+1. Add the tool with `mode: 'shadow'` while the repo still runs the action, and
+   compare the logged plans with the action's results.
+2. In one window, set `mode: 'live'` here and merge the repo PR deleting the
+   action's workflow. Until both land, both may write; they compute the same
+   plan, so the overlap is harmless.
+
+**A required-check poster** (pr-policy, merge-safety) can't overlap that way:
+two creators posting one context overwrite each other. So it shadows under a
+distinct context (`<name> (app)`), and once the verdicts match, the rest
+happens in one sitting: switch to the real context name, flip the ruleset's
+required check to the gate App's `integration_id`, and delete the workflow.
+
+Never leave a tool `live` on a repo that still runs its action.
 
 **Label writes now start workflows.** The action wrote labels with
 `GITHUB_TOKEN`, which starts no workflow runs. The App writes them with its

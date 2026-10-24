@@ -1,19 +1,55 @@
 import { describe, expect, it } from 'vitest';
-import { repoConfig } from '../src/repos.js';
+import type { RepoConfig } from '../src/repos.js';
+import { toolConfig } from '../src/repos.js';
 
-describe('repoConfig', () => {
+const POLICY = { uat: 'off', armAutoMerge: true } as const;
+
+function makeRepos(
+  prLifecycle?: NonNullable<RepoConfig['prLifecycle']>,
+): Record<string, RepoConfig> {
+  return { 'rmartz/pr-lifecycle': prLifecycle === undefined ? {} : { prLifecycle } };
+}
+
+describe('toolConfig: the reviewed allowlist', () => {
   it('reconciles the proof-of-concept repo live, with UAT on and arming off', () => {
-    expect(repoConfig('rmartz/firebase-nextjs-template')).toEqual({
+    expect(toolConfig('rmartz/firebase-nextjs-template', 'prLifecycle')).toEqual({
+      mode: 'live',
       policy: { uat: 'on', armAutoMerge: false },
-      dryRun: false,
     });
   });
 
   it('matches the repository name case-insensitively', () => {
-    expect(repoConfig('RMartz/Firebase-NextJS-Template')).toBeDefined();
+    expect(toolConfig('RMartz/Firebase-NextJS-Template', 'prLifecycle')?.mode).toBe('live');
   });
 
   it('leaves every other repository disabled', () => {
-    expect(repoConfig('rmartz/personal-budget')).toBeUndefined();
+    expect(toolConfig('rmartz/personal-budget', 'prLifecycle')).toBeUndefined();
+  });
+});
+
+describe('toolConfig: modes', () => {
+  it('returns a shadow entry with its mode and policy', () => {
+    const repos = makeRepos({ mode: 'shadow', policy: POLICY });
+    expect(toolConfig('rmartz/pr-lifecycle', 'prLifecycle', repos)).toEqual({
+      mode: 'shadow',
+      policy: POLICY,
+    });
+  });
+
+  it('returns a live entry with its mode and policy', () => {
+    const repos = makeRepos({ mode: 'live', policy: POLICY });
+    expect(toolConfig('rmartz/pr-lifecycle', 'prLifecycle', repos)).toEqual({
+      mode: 'live',
+      policy: POLICY,
+    });
+  });
+
+  it('treats an off entry as not enabled', () => {
+    const repos = makeRepos({ mode: 'off', policy: POLICY });
+    expect(toolConfig('rmartz/pr-lifecycle', 'prLifecycle', repos)).toBeUndefined();
+  });
+
+  it('treats a listed repo without an entry for the tool as not enabled', () => {
+    expect(toolConfig('rmartz/pr-lifecycle', 'prLifecycle', makeRepos())).toBeUndefined();
   });
 });

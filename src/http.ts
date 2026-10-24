@@ -5,7 +5,7 @@ import { createTokenMinter } from './installation-token.js';
 import type { Logger } from './logger.js';
 import { createJsonLogger } from './logger.js';
 import { createOpenPullsFinder } from './open-pulls.js';
-import { repoConfig } from './repos.js';
+import { toolConfig } from './repos.js';
 import type { ServerConfig } from './server-config.js';
 import { readServerConfig } from './server-config.js';
 
@@ -17,7 +17,7 @@ export function productionDeps(config: ServerConfig, log: Logger): HandlerDeps {
   return {
     webhookSecret: config.webhookSecret,
     botLogin: config.botLogin,
-    repoConfig: (fullName) => repoConfig(fullName),
+    prLifecycleConfig: (fullName) => toolConfig(fullName, 'prLifecycle'),
     mintToken: createTokenMinter({ clientId: config.clientId, privateKey: config.privateKey }),
     createClient: createHttpClient,
     findOpenPulls: createOpenPullsFinder(),

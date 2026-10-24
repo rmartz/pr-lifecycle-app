@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { WebhookRequest } from '../src/handler.js';
 import { handleWebhook } from '../src/handler.js';
 import type { Payload } from '../src/payload.js';
+import { toolConfig } from '../src/repos.js';
 import {
   BOT_LOGIN,
   makeDeps,
@@ -10,6 +11,12 @@ import {
   sign,
   TEMPLATE_CONFIG,
 } from './fixtures.js';
+
+const OFF_REPOS = {
+  'rmartz/firebase-nextjs-template': {
+    prLifecycle: { mode: 'off', policy: TEMPLATE_CONFIG.policy },
+  },
+} as const;
 
 function makeRequest(
   payload: Payload,
@@ -78,6 +85,17 @@ describe('handleWebhook: ignored', () => {
     ]);
   });
 
+  it('acknowledges a repo whose pr-lifecycle mode is off, with no work', () => {
+    const deps = makeDeps({
+      prLifecycleConfig: (fullName) => toolConfig(fullName, 'prLifecycle', OFF_REPOS),
+    });
+    const response = handleWebhook(makeRequest(makePullRequestEvent()), deps);
+    expect([response.body, response.background]).toEqual([
+      { ignored: 'repo-not-enabled' },
+      undefined,
+    ]);
+  });
+
   it("acknowledges the App's own label write without reconciling", () => {
     const event = makePullRequestEvent({ action: 'labeled', sender: { login: BOT_LOGIN } });
     const response = handleWebhook(makeRequest(event), makeDeps());
@@ -92,7 +110,7 @@ describe('handleWebhook: ignored', () => {
   it('ignores a repo whose config disappears between decide and run', () => {
     let calls = 0;
     const deps = makeDeps({
-      repoConfig: () => (calls++ === 0 ? TEMPLATE_CONFIG : undefined),
+      prLifecycleConfig: () => (calls++ === 0 ? TEMPLATE_CONFIG : undefined),
     });
     const response = handleWebhook(makeRequest(makePullRequestEvent()), deps);
     expect(response.body).toEqual({ ignored: 'repo-not-enabled' });
