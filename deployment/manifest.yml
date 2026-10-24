@@ -1,0 +1,16 @@
+environments: [production]
+
+deployments:
+  - provider: vercel
+    targets: { production: production }
+
+services:
+  # The rmartz-pr-lifecycle App's secrets, managed by
+  # `envctl secrets init|rotate github-app --private-key-file <pem>`.
+  - provider: github-app
+    environments: [production]
+    webhookUrl: https://pr-lifecycle-app.vercel.app/api/webhook
+    variables:
+      clientId: PR_LIFECYCLE_CLIENT_ID
+      privateKey: PR_LIFECYCLE_PRIVATE_KEY
+      webhookSecret: PR_LIFECYCLE_WEBHOOK_SECRET
