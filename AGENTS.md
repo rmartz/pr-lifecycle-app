@@ -98,8 +98,8 @@ a one-time starter, not an ongoing manager.
   which had no prior branch to base a worktree on.)
 - **PR titles must be Conventional Commits** (`feat:`, `fix:`, `docs:`, `ci:`, …).
   The repo squash-merges using the PR title; branch commits stay plain.
-- There is no package release. Deploys will run from `main` once the hosting
-  choice is made (see [docs/development.md](docs/development.md#deploy)).
+- There is no package release. Vercel deploys `main` to production on push (see
+  [docs/development.md](docs/development.md#deploy)), so a merge goes live.
 
 ## Agent directive files
 

@@ -1,0 +1,85 @@
+import type { IgnoreReason } from './events.js';
+import { decideEvent } from './events.js';
+import { parsePayload } from './payload.js';
+import type { RepoConfig } from './repos.js';
+import type { RunDeps } from './run-target.js';
+import { runTarget } from './run-target.js';
+import { verifySignature } from './signature.js';
+
+/** The parts of an HTTP request the handler reads. */
+export interface WebhookRequest {
+  readonly header: (name: string) => string | null;
+  /** The raw body, exactly as received: the signature covers these bytes. */
+  readonly body: string;
+}
+
+/**
+ * What to send back, plus the reconcile to finish after responding. GitHub gives a
+ * delivery 10 seconds, less than a reconcile (with its settle wait) can take, so
+ * the host keeps `background` running past the response (Vercel's `waitUntil`).
+ */
+export interface WebhookResponse {
+  readonly status: number;
+  readonly body: Readonly<Record<string, unknown>>;
+  readonly background: Promise<void> | undefined;
+}
+
+export interface HandlerDeps extends RunDeps {
+  readonly webhookSecret: string;
+  readonly botLogin: string;
+  readonly repoConfig: (fullName: string) => RepoConfig | undefined;
+}
+
+function respond(status: number, body: Readonly<Record<string, unknown>>): WebhookResponse {
+  return { status, body, background: undefined };
+}
+
+function ignored(reason: IgnoreReason): WebhookResponse {
+  return respond(200, { ignored: reason });
+}
+
+/**
+ * Handles one webhook delivery. The signature is checked before anything else
+ * reads the body; an unsigned or mis-signed delivery is rejected and does nothing.
+ * A valid delivery for a repo that isn't enabled, or that the App caused itself, is
+ * acknowledged and ignored.
+ */
+export function handleWebhook(request: WebhookRequest, deps: HandlerDeps): WebhookResponse {
+  if (!verifySignature(deps.webhookSecret, request.body, request.header('x-hub-signature-256'))) {
+    deps.log.warn('rejected a delivery with a bad signature', {
+      delivery: request.header('x-github-delivery'),
+    });
+    return respond(401, { error: 'bad signature' });
+  }
+  const eventName = request.header('x-github-event');
+  const deliveryId = request.header('x-github-delivery') ?? 'unknown';
+  const payload = parsePayload(request.body);
+  if (eventName === null || payload === undefined) {
+    return respond(400, { error: 'not a webhook delivery' });
+  }
+  const decision = decideEvent(eventName, payload, {
+    botLogin: deps.botLogin,
+    isEnabled: (fullName) => deps.repoConfig(fullName) !== undefined,
+  });
+  switch (decision.kind) {
+    case 'ignore':
+      return ignored(decision.reason);
+    case 'reconcile': {
+      const config = deps.repoConfig(decision.target.repository.fullName);
+      if (config === undefined) {
+        return ignored('repo-not-enabled');
+      }
+      deps.log.info('accepted', {
+        delivery: deliveryId,
+        event: eventName,
+        repo: decision.target.repository.fullName,
+        prs: decision.target.prs,
+      });
+      return {
+        status: 202,
+        body: { accepted: true },
+        background: runTarget(decision.target, config, deliveryId, deps),
+      };
+    }
+  }
+}

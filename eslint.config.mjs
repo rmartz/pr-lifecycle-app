@@ -90,8 +90,8 @@ export default tseslint.config(
   {
     // Server source. max-lines is the JS/TS file-length hard cap (non-TS files
     // are capped by repo-hygiene's file-caps check): aim for ~200 lines, split at
-    // ~240, hard ceiling 400.
-    files: ['src/**/*.ts'],
+    // ~240, hard ceiling 400. api/ holds the host's function shims.
+    files: ['src/**/*.ts', 'api/**/*.ts'],
     rules: {
       'max-lines': ['error', { max: 400, skipBlankLines: false, skipComments: false }],
       ...STYLE_RULES,
