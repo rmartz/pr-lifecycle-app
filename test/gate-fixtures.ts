@@ -6,6 +6,7 @@ import type {
 } from '@rmartz/pr-policy';
 import type { GateHandlerDeps } from '../src/gate-handler.js';
 import type { Payload } from '../src/payload.js';
+import type { MergeSafetyConfig } from '../src/run-merge-safety.js';
 import type { PrPolicyConfig } from '../src/run-pr-policy.js';
 import { INSTALLATION_ID, makeLogger, makeRepository, SECRET } from './fixtures.js';
 
@@ -96,6 +97,10 @@ export interface GateOptions {
   readonly statusesOk?: boolean;
   readonly sendOk?: boolean;
   readonly config?: PrPolicyConfig | undefined;
+  /** merge-safety's config for the template; off unless given. */
+  readonly mergeSafety?: MergeSafetyConfig;
+  /** The client merge-safety (and the retitle) run against; a recording fake by default. */
+  readonly client?: GitHubClient;
   readonly overrides?: Partial<GateHandlerDeps>;
 }
 
@@ -114,7 +119,14 @@ export function makeGateDeps(options: GateOptions = {}): FakeGateDeps {
       minted.push({ installationId, repo });
       return Promise.resolve(`gate-token-for-${installationId}-${repo}`);
     },
-    createClient: (token) => makeClient(token, calls, options.sendOk ?? true),
+    mergeSafetyConfig: (fullName) =>
+      fullName.toLowerCase() === 'rmartz/firebase-nextjs-template'
+        ? options.mergeSafety
+        : undefined,
+    createClient: (token) => options.client ?? makeClient(token, calls, options.sendOk ?? true),
+    rateLimitRemaining: () => 4321,
+    sleep: () => Promise.resolve(),
+    now: () => new Date('2026-10-24T12:00:00Z'),
     policy: {
       gatherFacts: (target) => {
         record('gatherFacts', [target.repo, target.pr]);

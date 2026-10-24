@@ -66,7 +66,6 @@ The server is growing into the fleet's PR server (epic
 [#5](https://github.com/rmartz/pr-lifecycle-app/issues/5)). It runs as two Apps
 from two Vercel projects: the **actor** (`rmartz-pr-lifecycle`) and a **gate**
 App that posts the `pr-policy` and `merge-safety` checks; see
-[Roles](server.md#roles-actor-and-gate). The gate runs pr-policy, in shadow on
-the template until its verdicts match the action's. merge-safety stays an
-Actions workflow until its route lands and a repo cuts over. Record each decision on a page
+[Roles](server.md#roles-actor-and-gate). The gate runs pr-policy and merge-safety,
+in shadow on the template until their verdicts match the actions'. Record each decision on a page
 in this bundle when it is made.

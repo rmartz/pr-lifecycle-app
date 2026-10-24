@@ -1,7 +1,7 @@
 ---
 type: Reference
 title: The webhook server
-description: How a delivery flows through the server — the actor and gate roles, the gate's pr-policy route, signature check, event-to-PR mapping, the per-tool repo allowlist and modes, per-repo-scoped installation tokens, background reconciles — plus its subscribed events, App permissions, environment and the proof-of-concept simplifications.
+description: How a delivery flows through the server — the actor and gate roles, the gate's pr-policy and merge-safety routes, signature check, event-to-PR mapping, the per-tool repo allowlist and modes, per-repo-scoped installation tokens, background reconciles — plus its subscribed events, App permissions, environment and the proof-of-concept simplifications.
 tags: [architecture, webhooks, security, github-app, config]
 ---
 
@@ -31,7 +31,10 @@ handler, and the actor never runs the gate's. Both verify the signature first
 with their own App's webhook secret, so a delivery signed for one App is
 rejected (`401`) by the other.
 
-The gate runs [pr-policy](#the-gate-pr-policy). merge-safety is not routed yet.
+The gate runs [pr-policy](#the-gate-pr-policy) and
+[merge-safety](#the-gate-merge-safety). Each tool decides on its own whether a
+delivery concerns it. The gate responds `202` when either accepts, and its body
+says what each made of it (`{ prPolicy, mergeSafety }`).
 The rest of this page describes the actor unless it says otherwise.
 
 ## The gate: pr-policy
@@ -81,6 +84,52 @@ posts `pr-policy` and makes the writes. For the required-check cutover, see
 and issues write; contents read; metadata read. It subscribes to `pull_request`
 and `status`, and to `push`, `check_run`, `check_suite` and `workflow_run` (the
 last needs Actions read) for merge-safety.
+
+## The gate: merge-safety
+
+The gate runs [`@rmartz/merge-safety`](https://github.com/rmartz/merge-safety)
+in-process, so a repo needs no `merge-safety.yml`
+([`src/run-merge-safety.ts`](../src/run-merge-safety.ts)). The library's
+**API-backed fact source** (`makeApiGitRunner`) answers its git queries from
+the REST compare and commit APIs, so no checkout is needed. It fails closed past
+the compare API's caps and reports `Could not evaluate`. The glue the CLI does
+with `gh` lives in [`src/merge-safety-io.ts`](../src/merge-safety-io.ts): read
+the PR, probe the base's checks and required contexts, post the check, list
+open PRs.
+
+**Events** ([`src/merge-safety-events.ts`](../src/merge-safety-events.ts), pure):
+
+| Event          | When                                                      | Does                                                    |
+| -------------- | --------------------------------------------------------- | ------------------------------------------------------- |
+| `pull_request` | opened, synchronize, reopened, edited, labeled, unlabeled | evaluates the PR                                        |
+| `push`         | to a branch (not a tag, not a deletion)                   | invalidates the open PRs based on that branch           |
+| `workflow_run` | completed, on the default branch                          | invalidates the default branch's open PRs (base health) |
+| `check_run`    | `rerequested` on `merge-safety` or `merge-safety (app)`   | re-evaluates its PRs: the native **Re-run** button      |
+
+The gate's own `labeled`/`unlabeled`/`edited` events are skipped.
+
+**Evaluate.** Read the PR, re-reading while GitHub computes `mergeable`, and
+skip it unless it is open. Gather the facts and take the library's verdict, or
+its fail-safe `Could not evaluate`. Post the check-run, completing any open run
+of the name in place, mirrored to a commit status. Live, also reconcile
+`update required` / `merge conflict`.
+
+**Invalidate** replaces the workflow's per-PR `workflow_dispatch` fan-out:
+
+1. List the open PRs on the moved branch.
+2. Mark every one pending (`Re-evaluating`) first, which holds its merge.
+3. Re-evaluate them in place, at most `concurrency` at a time (the repo's
+   `mergeSafety` policy, 4 on the template).
+
+A base push with about 20 open PRs is then a few rounds of a few seconds each,
+well inside the function's 300 s. Each response's `x-ratelimit-remaining` is
+recorded ([`src/rate-limit.ts`](../src/rate-limit.ts)) and logged. Below
+`RATE_LIMIT_FLOOR` (500) the fan-out stops: the PRs it didn't reach keep their
+pending mark, so they stay held until the next base event or a Re-run.
+
+**Shadow vs live.** Shadow posts `merge-safety (app)` and writes no labels;
+live posts `merge-safety` and reconciles them. The cutover is the same as
+pr-policy's ([Cutting a tool over](#cutting-a-tool-over-on-a-repo)).
 
 ## A delivery, step by step
 
@@ -227,6 +276,7 @@ acknowledged as `repo-not-enabled`. Each tool cuts over per repo on its own.
 | --------------------------------- | ------------ | -------- | ----------------------------------------------------- |
 | `rmartz/firebase-nextjs-template` | pr-lifecycle | `live`   | `uat: on`, arming off                                 |
 | `rmartz/firebase-nextjs-template` | pr-policy    | `shadow` | UAT gate on, `requireUatLabel`, `retitleDependabotCi` |
+| `rmartz/firebase-nextjs-template` | merge-safety | `shadow` | `concurrency: 4`                                      |
 
 ### Cutting a tool over on a repo
 

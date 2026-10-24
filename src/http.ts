@@ -20,6 +20,7 @@ import {
 import type { Logger } from './logger.js';
 import { createJsonLogger } from './logger.js';
 import { createOpenPullsFinder } from './open-pulls.js';
+import { createRateLimitMeter } from './rate-limit.js';
 import { toolConfig } from './repos.js';
 import { createSandboxGit } from './sandbox-git.js';
 import type { ServerConfig } from './server-config.js';
@@ -60,16 +61,22 @@ export function productionDeps(config: ServerConfig, log: Logger): HandlerDeps {
 
 /** Wires the gate role's production dependencies around its handler. */
 export function gateDeps(config: ServerConfig, log: Logger): GateHandlerDeps {
+  // One meter per delivery: it tracks this installation's remaining budget.
+  const meter = createRateLimitMeter();
   return {
     webhookSecret: config.webhookSecret,
     botLogin: config.botLogin,
     prPolicyConfig: (fullName) => toolConfig(fullName, 'prPolicy'),
+    mergeSafetyConfig: (fullName) => toolConfig(fullName, 'mergeSafety'),
     mintToken: createTokenMinter({
       clientId: config.clientId,
       privateKey: config.privateKey,
       permissions: GATE_PERMISSIONS,
     }),
-    createClient: (token) => createFetchClient({ token }),
+    createClient: (token) => createFetchClient({ token, fetch: meter.fetch }),
+    rateLimitRemaining: meter.remaining,
+    sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    now: () => new Date(),
     policy: {
       gatherFacts,
       openPullRequestsAtHead,

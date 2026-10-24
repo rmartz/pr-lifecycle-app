@@ -52,6 +52,7 @@
     ]
   },
   "dependencies": {
+    "@rmartz/merge-safety": "0.16.0",
     "@rmartz/pr-lifecycle": "11.5.0",
     "@rmartz/pr-policy": "1.7.0",
     "@vercel/functions": "3.10.3",
