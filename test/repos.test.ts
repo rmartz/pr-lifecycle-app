@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { repoConfig } from '../src/repos.js';
 
 describe('repoConfig', () => {
-  it('runs the proof-of-concept repo in shadow mode with UAT on and arming off', () => {
+  it('reconciles the proof-of-concept repo live, with UAT on and arming off', () => {
     expect(repoConfig('rmartz/firebase-nextjs-template')).toEqual({
       policy: { uat: 'on', armAutoMerge: false },
-      dryRun: true,
+      dryRun: false,
     });
   });
 

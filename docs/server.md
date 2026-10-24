@@ -76,9 +76,23 @@ repo must never be reconciled by both. So the server acts only on the repos
 listed in [`src/repos.ts`](../src/repos.ts), each with its policy and a `dryRun`
 flag. Enabling a repo is a reviewed code change, not a runtime setting.
 
-| Repo                              | Policy                | Mode                    |
-| --------------------------------- | --------------------- | ----------------------- |
-| `rmartz/firebase-nextjs-template` | `uat: on`, arming off | shadow (`dryRun: true`) |
+| Repo                              | Policy                | Mode                   |
+| --------------------------------- | --------------------- | ---------------------- |
+| `rmartz/firebase-nextjs-template` | `uat: on`, arming off | live (`dryRun: false`) |
+
+**Cutting a repo over** follows two steps. First, enable it with
+`dryRun: true` (shadow mode) while it still runs the action, and compare the
+logged plans with the action's results. Then, in the same window, set
+`dryRun: false` here and delete the repo's `pr-lifecycle.yml`. Until the second
+step merges, both may reconcile; they compute the same plan, so the overlap is
+harmless.
+
+**Label writes now start workflows.** The action wrote labels with
+`GITHUB_TOKEN`, which starts no workflow runs. The App writes them with its
+installation token, so a lifecycle label it adds fires the repo's `labeled`
+workflows (pr-policy, merge-safety, preview deploys). A caller that worked
+around the old behavior, such as a pr-policy `workflow_run: [pr-lifecycle]`
+trigger, can drop the workaround.
 
 ## Environment
 

@@ -49,10 +49,10 @@ merge-authorization bug. The [testing strategy](testing.md) is built around that
 
 The server runs on **Vercel** as the existing `rmartz-pr-lifecycle` App. It acts
 only on the repos in its allowlist. The proof of concept is
-`rmartz/firebase-nextjs-template`, in **shadow mode**: the template still runs the
-action, and the App logs dry-run plans to compare against it. Once they match, a
-template PR removes its `pr-lifecycle.yml` and the App turns dry-run off. How it
-works: [The webhook server](server.md).
+`rmartz/firebase-nextjs-template`, which the App reconciles **live**: the template
+no longer runs the action. It was cut over after a shadow (dry-run) period
+whose plans matched the action's. How it works: [The webhook server](server.md),
+including [cutting a repo over](server.md#repo-allowlist).
 
 The design is tracked in
 [rmartz/pr-lifecycle#134](https://github.com/rmartz/pr-lifecycle/issues/134).

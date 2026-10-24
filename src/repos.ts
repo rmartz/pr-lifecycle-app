@@ -18,11 +18,12 @@ export interface RepoConfig {
  * here. Config lives in code so enabling a repo is a reviewed change.
  */
 export const REPOS: Readonly<Record<string, RepoConfig>> = {
-  // The proof of concept (rmartz/pr-lifecycle#134). Matches the template's
-  // pr-lifecycle.yml inputs: UAT on, arming off.
+  // The proof of concept (rmartz/pr-lifecycle#134). Matches the inputs the
+  // template's retired pr-lifecycle.yml passed the action: UAT on, arming off.
+  // Live: the template no longer runs the action.
   'rmartz/firebase-nextjs-template': {
     policy: { uat: 'on', armAutoMerge: false },
-    dryRun: true,
+    dryRun: false,
   },
 };
 
