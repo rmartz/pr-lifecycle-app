@@ -97,6 +97,28 @@ is no deploy workflow here:
   `main`. To stop the App acting on a repo immediately, remove it from
   [`src/repos.ts`](../src/repos.ts), or clear the App's webhook URL.
 
+## Secrets and env vars (envctl)
+
+The Vercel project `pr-lifecycle-app` reads three env vars, all on the
+**Production** target only. [`deployment/`](../deployment/manifest.yml) declares
+them for [envctl](https://github.com/rmartz/envctl)'s `github-app` provider:
+
+| Variable                      | Kind                     | Managed by                                       |
+| ----------------------------- | ------------------------ | ------------------------------------------------ |
+| `PR_LIFECYCLE_CLIENT_ID`      | public, in YAML          | `envctl config push --env production`            |
+| `PR_LIFECYCLE_PRIVATE_KEY`    | Vercel sensitive         | `envctl secrets init github-app` (manual rotate) |
+| `PR_LIFECYCLE_WEBHOOK_SECRET` | Vercel sensitive, minted | `envctl secrets init` / `rotate github-app`      |
+
+`envctl secrets init github-app --private-key-file <pem>` pushes the private key
+and a generated webhook secret, redeploys production, then points the
+`rmartz-pr-lifecycle` App's webhook at
+`https://pr-lifecycle-app.vercel.app/api/webhook` with that secret.
+`envctl secrets rotate github-app --private-key-file <pem>` rotates the webhook
+secret the same way, updating GitHub only after the redeploy is `READY`. The
+private key can only be generated on the App's settings page; rotate prints the
+manual steps. The App's permissions and event subscriptions are also set by hand
+there. Never commit the PEM (`*.pem` is gitignored).
+
 ## Repo hygiene
 
 [`.repo-hygiene.yml`](../.repo-hygiene.yml) sets options only; every check runs at
