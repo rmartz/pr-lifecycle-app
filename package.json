@@ -53,6 +53,7 @@
   },
   "dependencies": {
     "@rmartz/pr-lifecycle": "11.5.0",
+    "@rmartz/pr-policy": "1.7.0",
     "@vercel/functions": "3.10.3",
     "@vercel/sandbox": "3.8.0",
     "universal-github-app-jwt": "2.2.2"

@@ -1,9 +1,22 @@
 import { createHttpClient, reconcilePullRequest } from '@rmartz/pr-lifecycle';
+import {
+  applyLabelEdits,
+  createFetchClient,
+  evaluatePolicy,
+  gatherFacts,
+  openPullRequestsAtHead,
+  postCheckStatuses,
+  postVerdict,
+} from '@rmartz/pr-policy';
 import type { GateHandlerDeps } from './gate-handler.js';
 import { handleGateWebhook } from './gate-handler.js';
 import type { HandlerDeps, WebhookRequest, WebhookResponse } from './handler.js';
 import { handleWebhook } from './handler.js';
-import { createTokenMinter, PR_LIFECYCLE_PERMISSIONS } from './installation-token.js';
+import {
+  createTokenMinter,
+  GATE_PERMISSIONS,
+  PR_LIFECYCLE_PERMISSIONS,
+} from './installation-token.js';
 import type { Logger } from './logger.js';
 import { createJsonLogger } from './logger.js';
 import { createOpenPullsFinder } from './open-pulls.js';
@@ -47,7 +60,26 @@ export function productionDeps(config: ServerConfig, log: Logger): HandlerDeps {
 
 /** Wires the gate role's production dependencies around its handler. */
 export function gateDeps(config: ServerConfig, log: Logger): GateHandlerDeps {
-  return { webhookSecret: config.webhookSecret, botLogin: config.botLogin, log };
+  return {
+    webhookSecret: config.webhookSecret,
+    botLogin: config.botLogin,
+    prPolicyConfig: (fullName) => toolConfig(fullName, 'prPolicy'),
+    mintToken: createTokenMinter({
+      clientId: config.clientId,
+      privateKey: config.privateKey,
+      permissions: GATE_PERMISSIONS,
+    }),
+    createClient: (token) => createFetchClient({ token }),
+    policy: {
+      gatherFacts,
+      openPullRequestsAtHead,
+      evaluatePolicy,
+      applyLabelEdits,
+      postVerdict,
+      postCheckStatuses,
+    },
+    log,
+  };
 }
 
 export interface HttpOptions {

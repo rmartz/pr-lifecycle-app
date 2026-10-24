@@ -24,10 +24,28 @@ export interface ActiveToolConfig<Policy> {
   readonly policy: Policy;
 }
 
+/**
+ * pr-policy's settings for one repo: the inputs its caller workflow passed
+ * `rmartz/pr-policy-action`. They live here, never in a file the PR could edit,
+ * so a PR can't switch off the gate it is waiting on.
+ */
+export interface PrPolicyPolicy {
+  /** Drop the UAT gate, for a repo with nothing to user-test. */
+  readonly skipUat: boolean;
+  /** Hold a PR that carries no UAT label. */
+  readonly requireUatLabel: boolean;
+  /** Retitle a Dependabot linter or formatter bump to `ci` before evaluating it. */
+  readonly retitleDependabotCi: boolean;
+  /** GitHub App logins trusted to post the `pr-lifecycle/sign-off` status. */
+  readonly signOffStatusCreators: readonly string[];
+}
+
 /** Each tool's policy type: the settings it takes besides its mode. */
 export interface ToolPolicies {
   /** The reconciler: the same settings the action takes as inputs. */
   readonly prLifecycle: ReconcilePolicy;
+  /** The pr-policy gate, posted by the gate role. */
+  readonly prPolicy: PrPolicyPolicy;
 }
 
 export type ToolName = keyof ToolPolicies;
@@ -48,6 +66,17 @@ export const REPOS: Readonly<Record<string, RepoConfig>> = {
   // Live: the template no longer runs the action.
   'rmartz/firebase-nextjs-template': {
     prLifecycle: { mode: 'live', policy: { uat: 'on', armAutoMerge: false } },
+    // Matches the template's pr-policy.yml. Shadow: posted as `pr-policy (app)`
+    // beside the action's `pr-policy` until the verdicts match.
+    prPolicy: {
+      mode: 'shadow',
+      policy: {
+        skipUat: false,
+        requireUatLabel: true,
+        retitleDependabotCi: true,
+        signOffStatusCreators: ['rmartz-pr-lifecycle[bot]'],
+      },
+    },
   },
 };
 

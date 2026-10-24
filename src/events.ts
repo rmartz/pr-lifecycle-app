@@ -91,7 +91,8 @@ function isSubscribed(name: string): name is SubscribedEvent {
   return (SUBSCRIBED_EVENTS as readonly string[]).includes(name);
 }
 
-function readRepository(payload: Payload): EventRepository | undefined {
+/** The repository and installation a payload names, or undefined when any part is missing. */
+export function readRepository(payload: Payload): EventRepository | undefined {
   const installationId = idAt(objectAt(payload, 'installation'), 'id');
   const repo = objectAt(payload, 'repository');
   const id = idAt(repo, 'id');

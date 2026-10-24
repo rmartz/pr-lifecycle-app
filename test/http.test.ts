@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { GateHandlerDeps } from '../src/gate-handler.js';
 import { gateDeps, handleHttpRequest, productionDeps } from '../src/http.js';
 import type { ServerConfig } from '../src/server-config.js';
+import { makeGateDeps } from './gate-fixtures.js';
 import { makeDeps, makeLogger, makePullRequestEvent, SECRET, sign } from './fixtures.js';
 
 const ENV = {
@@ -91,13 +92,17 @@ describe('handleHttpRequest: roles', () => {
   it('serves the gate handler, never the reconciler, on a gate deployment', async () => {
     const actor = makeDeps();
     const body = JSON.stringify(makePullRequestEvent());
+    const gate = makeGateDeps({ overrides: { webhookSecret: GATE_SECRET } });
+    const kept: Promise<unknown>[] = [];
     const response = await handleHttpRequest(makeHttpRequest(body, sign(body, GATE_SECRET)), {
       env: { ...ENV, ...GATE_ENV },
-      waitUntil: () => undefined,
+      waitUntil: (promise) => kept.push(promise),
       log: makeLogger(),
       deps: () => actor,
+      gateDeps: () => gate,
     });
-    expect([response.status, actor.minted, actor.reconciles]).toEqual([200, [], []]);
+    await Promise.all(kept);
+    expect([response.status, actor.minted, actor.reconciles]).toEqual([202, [], []]);
   });
 
   it("verifies a gate delivery with the gate's secret, rejecting the actor's", async () => {
@@ -117,9 +122,9 @@ describe('handleHttpRequest: roles', () => {
       env: { ...ENV, ...GATE_ENV },
       waitUntil: () => undefined,
       log: makeLogger(),
-      gateDeps: (config, log): GateHandlerDeps => {
+      gateDeps: (config): GateHandlerDeps => {
         seen.push(config);
-        return gateDeps(config, log);
+        return makeGateDeps({ overrides: { webhookSecret: GATE_SECRET } });
       },
     });
     expect(seen.map(({ role, clientId }) => ({ role, clientId }))).toEqual([
@@ -136,12 +141,31 @@ describe('handleHttpRequest: roles', () => {
       waitUntil: () => undefined,
       log: deps.log,
       deps: () => deps,
-      gateDeps: (config, log) => {
+      gateDeps: () => {
         gateWired = true;
-        return gateDeps(config, log);
+        return makeGateDeps();
       },
     });
     expect(gateWired).toBe(false);
+  });
+});
+
+describe('gateDeps', () => {
+  const GATE_CONFIG: ServerConfig = { ...CONFIG, role: 'gate', botLogin: 'rmartz-pr-gate[bot]' };
+
+  it('carries the gate secret and bot login', () => {
+    const deps = gateDeps(GATE_CONFIG, makeLogger());
+    expect([deps.webhookSecret, deps.botLogin]).toEqual(['s', 'rmartz-pr-gate[bot]']);
+  });
+
+  it('shadows pr-policy on the proof-of-concept repository', () => {
+    const deps = gateDeps(GATE_CONFIG, makeLogger());
+    expect(deps.prPolicyConfig('rmartz/firebase-nextjs-template')?.mode).toBe('shadow');
+  });
+
+  it('leaves pr-policy off everywhere else', () => {
+    const deps = gateDeps(GATE_CONFIG, makeLogger());
+    expect(deps.prPolicyConfig('rmartz/personal-budget')).toBeUndefined();
   });
 });
 
