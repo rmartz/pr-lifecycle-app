@@ -167,6 +167,23 @@ describe('gateDeps', () => {
     const deps = gateDeps(GATE_CONFIG, makeLogger());
     expect(deps.prPolicyConfig('rmartz/personal-budget')).toBeUndefined();
   });
+
+  it('shadows merge-safety on the proof-of-concept repository', () => {
+    const deps = gateDeps(GATE_CONFIG, makeLogger());
+    expect(deps.mergeSafetyConfig('rmartz/firebase-nextjs-template')?.mode).toBe('shadow');
+  });
+
+  it('knows no rate limit before the client has made a request', () => {
+    const deps = gateDeps(GATE_CONFIG, makeLogger());
+    deps.createClient('ghs_unused');
+    expect(deps.rateLimitRemaining()).toBeUndefined();
+  });
+
+  it('tells the time and sleeps for real', async () => {
+    const deps = gateDeps(GATE_CONFIG, makeLogger());
+    await deps.sleep(0);
+    expect(deps.now()).toBeInstanceOf(Date);
+  });
 });
 
 describe('productionDeps', () => {

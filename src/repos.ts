@@ -40,12 +40,23 @@ export interface PrPolicyPolicy {
   readonly signOffStatusCreators: readonly string[];
 }
 
+/** merge-safety's settings for one repo. Its verdict takes no repo inputs. */
+export interface MergeSafetyPolicy {
+  /**
+   * How many open PRs a base move re-evaluates at once. Bounds the fan-out's
+   * share of the installation's rate limit and of the function's time.
+   */
+  readonly concurrency: number;
+}
+
 /** Each tool's policy type: the settings it takes besides its mode. */
 export interface ToolPolicies {
   /** The reconciler: the same settings the action takes as inputs. */
   readonly prLifecycle: ReconcilePolicy;
   /** The pr-policy gate, posted by the gate role. */
   readonly prPolicy: PrPolicyPolicy;
+  /** The merge-safety gate, posted by the gate role. */
+  readonly mergeSafety: MergeSafetyPolicy;
 }
 
 export type ToolName = keyof ToolPolicies;
@@ -77,6 +88,8 @@ export const REPOS: Readonly<Record<string, RepoConfig>> = {
         signOffStatusCreators: ['rmartz-pr-lifecycle[bot]'],
       },
     },
+    // Shadow: posted as `merge-safety (app)` beside the action's `merge-safety`.
+    mergeSafety: { mode: 'shadow', policy: { concurrency: 4 } },
   },
 };
 

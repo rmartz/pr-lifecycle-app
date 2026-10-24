@@ -38,6 +38,13 @@ describe('toolConfig: the reviewed allowlist', () => {
     });
   });
 
+  it('shadows merge-safety on the proof-of-concept repo with a bounded fan-out', () => {
+    expect(toolConfig('rmartz/firebase-nextjs-template', 'mergeSafety')).toEqual({
+      mode: 'shadow',
+      policy: { concurrency: 4 },
+    });
+  });
+
   it('leaves pr-policy off on every other repository', () => {
     expect(toolConfig('rmartz/personal-budget', 'prPolicy')).toBeUndefined();
   });

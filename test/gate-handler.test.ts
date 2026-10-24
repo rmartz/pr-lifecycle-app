@@ -3,7 +3,9 @@ import { handleGateWebhook } from '../src/gate-handler.js';
 import type { WebhookRequest } from '../src/handler.js';
 import type { Payload } from '../src/payload.js';
 import { makePullRequestEvent, makeRepository, sign } from './fixtures.js';
+import { makeFakeClient } from './fake-client.js';
 import { GATE_BOT, makeGateDeps, makeStatusEvent, SHADOW_CONFIG } from './gate-fixtures.js';
+import { makeMergeSafetyRoutes, MS_SHADOW, REPO } from './merge-safety-fixtures.js';
 
 function makeRequest(
   payload: Payload,
@@ -47,7 +49,10 @@ describe('handleGateWebhook: signature', () => {
 describe('handleGateWebhook: accepted', () => {
   it('accepts a PR event for an enabled repo with 202', () => {
     const response = handleGateWebhook(makeRequest(makePullRequestEvent()), makeGateDeps());
-    expect([response.status, response.body]).toEqual([202, { accepted: true }]);
+    expect([response.status, response.body]).toEqual([
+      202,
+      { prPolicy: 'accepted', mergeSafety: 'repo-not-enabled' },
+    ]);
   });
 
   it('evaluates in the background, after the response', async () => {
@@ -83,7 +88,7 @@ describe('handleGateWebhook: ignored', () => {
     const response = handleGateWebhook(makeRequest(event), deps);
     expect([response.status, response.body, response.background]).toEqual([
       200,
-      { ignored: 'repo-not-enabled' },
+      { prPolicy: 'repo-not-enabled', mergeSafety: 'repo-not-enabled' },
       undefined,
     ]);
   });
@@ -93,19 +98,28 @@ describe('handleGateWebhook: ignored', () => {
       makeRequest(makePullRequestEvent()),
       makeGateDeps({ config: undefined }),
     );
-    expect(response.body).toEqual({ ignored: 'repo-not-enabled' });
+    expect(response.body).toEqual({
+      prPolicy: 'repo-not-enabled',
+      mergeSafety: 'repo-not-enabled',
+    });
   });
 
   it("acknowledges the gate's own label write without evaluating", () => {
     const event = makePullRequestEvent({ action: 'labeled', sender: { login: GATE_BOT } });
-    const response = handleGateWebhook(makeRequest(event), makeGateDeps());
-    expect(response.body).toEqual({ ignored: 'self-triggered' });
+    const response = handleGateWebhook(
+      makeRequest(event),
+      makeGateDeps({ mergeSafety: MS_SHADOW }),
+    );
+    expect(response.body).toEqual({ prPolicy: 'self-triggered', mergeSafety: 'self-triggered' });
   });
 
   it("acknowledges the gate's own status without evaluating", () => {
     const event = makeStatusEvent({ context: 'pr-policy (app)' });
     const response = handleGateWebhook(makeRequest(event, { event: 'status' }), makeGateDeps());
-    expect(response.body).toEqual({ ignored: 'unhandled-action' });
+    expect(response.body).toEqual({
+      prPolicy: 'unhandled-action',
+      mergeSafety: 'unsubscribed-event',
+    });
   });
 
   it('ignores a repo whose config disappears between decide and run', () => {
@@ -114,7 +128,7 @@ describe('handleGateWebhook: ignored', () => {
       overrides: { prPolicyConfig: () => (calls++ === 0 ? SHADOW_CONFIG : undefined) },
     });
     const response = handleGateWebhook(makeRequest(makePullRequestEvent()), deps);
-    expect(response.body).toEqual({ ignored: 'repo-not-enabled' });
+    expect(response.body).toMatchObject({ prPolicy: 'repo-not-enabled' });
   });
 });
 
@@ -128,6 +142,43 @@ describe('handleGateWebhook: replay', () => {
     expect(verdicts).toEqual([
       [31, 'head1', 'failure', 'pr-policy (app)'],
       [31, 'head1', 'failure', 'pr-policy (app)'],
+    ]);
+  });
+});
+
+describe('handleGateWebhook: merge-safety', () => {
+  it('runs both tools on a PR event when both are enabled', () => {
+    const response = handleGateWebhook(
+      makeRequest(makePullRequestEvent()),
+      makeGateDeps({ mergeSafety: MS_SHADOW }),
+    );
+    expect(response.body).toEqual({ prPolicy: 'accepted', mergeSafety: 'accepted' });
+  });
+
+  it('posts the merge-safety shadow check in the background', async () => {
+    const client = makeFakeClient(makeMergeSafetyRoutes());
+    const deps = makeGateDeps({ mergeSafety: MS_SHADOW, client, config: undefined });
+    await handleGateWebhook(makeRequest(makePullRequestEvent()), deps).background;
+    expect(
+      client.writes.find(({ path }) => path === `repos/${REPO}/check-runs`)?.body,
+    ).toMatchObject({ name: 'merge-safety (app)' });
+  });
+
+  it('accepts a push to the base as an invalidation for merge-safety only', () => {
+    const push = {
+      installation: { id: 777 },
+      repository: makeRepository({ default_branch: 'main' }),
+      sender: { login: 'rmartz' },
+      ref: 'refs/heads/main',
+      deleted: false,
+    };
+    const response = handleGateWebhook(
+      makeRequest(push, { event: 'push' }),
+      makeGateDeps({ mergeSafety: MS_SHADOW }),
+    );
+    expect([response.status, response.body]).toEqual([
+      202,
+      { prPolicy: 'unsubscribed-event', mergeSafety: 'accepted' },
     ]);
   });
 });
