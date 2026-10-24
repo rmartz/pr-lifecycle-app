@@ -1,11 +1,31 @@
 import { describe, expect, it } from 'vitest';
-import { handleHttpRequest, productionDeps } from '../src/http.js';
+import type { GateHandlerDeps } from '../src/gate-handler.js';
+import { gateDeps, handleHttpRequest, productionDeps } from '../src/http.js';
+import type { ServerConfig } from '../src/server-config.js';
 import { makeDeps, makeLogger, makePullRequestEvent, SECRET, sign } from './fixtures.js';
 
 const ENV = {
+  PR_APP_ROLE: 'actor',
   PR_LIFECYCLE_CLIENT_ID: 'Iv1.client',
   PR_LIFECYCLE_PRIVATE_KEY: 'key',
   PR_LIFECYCLE_WEBHOOK_SECRET: SECRET,
+};
+
+const GATE_SECRET = 'gate-webhook-secret';
+
+const GATE_ENV = {
+  PR_APP_ROLE: 'gate',
+  PR_GATE_CLIENT_ID: 'Iv1.gate',
+  PR_GATE_PRIVATE_KEY: 'gate-key',
+  PR_GATE_WEBHOOK_SECRET: GATE_SECRET,
+};
+
+const CONFIG: ServerConfig = {
+  role: 'actor',
+  clientId: 'Iv1.client',
+  privateKey: 'key',
+  webhookSecret: 's',
+  botLogin: 'b[bot]',
 };
 
 function makeHttpRequest(body: string, signature: string): Request {
@@ -22,12 +42,22 @@ function makeHttpRequest(body: string, signature: string): Request {
 
 describe('handleHttpRequest', () => {
   it('refuses every delivery with 500 while a secret is missing', async () => {
-    const log = makeLogger();
     const body = JSON.stringify(makePullRequestEvent());
     const response = await handleHttpRequest(makeHttpRequest(body, sign(body)), {
-      env: {},
+      env: { PR_APP_ROLE: 'actor' },
       waitUntil: () => undefined,
-      log,
+      log: makeLogger(),
+    });
+    expect(response.status).toBe(500);
+  });
+
+  it('refuses every delivery with 500 while the role is unset', async () => {
+    const env = { ...ENV, PR_APP_ROLE: undefined };
+    const body = JSON.stringify(makePullRequestEvent());
+    const response = await handleHttpRequest(makeHttpRequest(body, sign(body)), {
+      env,
+      waitUntil: () => undefined,
+      log: makeLogger(),
     });
     expect(response.status).toBe(500);
   });
@@ -57,28 +87,77 @@ describe('handleHttpRequest', () => {
   });
 });
 
+describe('handleHttpRequest: roles', () => {
+  it('serves the gate handler, never the reconciler, on a gate deployment', async () => {
+    const actor = makeDeps();
+    const body = JSON.stringify(makePullRequestEvent());
+    const response = await handleHttpRequest(makeHttpRequest(body, sign(body, GATE_SECRET)), {
+      env: { ...ENV, ...GATE_ENV },
+      waitUntil: () => undefined,
+      log: makeLogger(),
+      deps: () => actor,
+    });
+    expect([response.status, actor.minted, actor.reconciles]).toEqual([200, [], []]);
+  });
+
+  it("verifies a gate delivery with the gate's secret, rejecting the actor's", async () => {
+    const body = JSON.stringify(makePullRequestEvent());
+    const response = await handleHttpRequest(makeHttpRequest(body, sign(body, SECRET)), {
+      env: { ...ENV, ...GATE_ENV },
+      waitUntil: () => undefined,
+      log: makeLogger(),
+    });
+    expect(response.status).toBe(401);
+  });
+
+  it('wires the gate handler with the gate config only', async () => {
+    const seen: ServerConfig[] = [];
+    const body = JSON.stringify(makePullRequestEvent());
+    await handleHttpRequest(makeHttpRequest(body, sign(body, GATE_SECRET)), {
+      env: { ...ENV, ...GATE_ENV },
+      waitUntil: () => undefined,
+      log: makeLogger(),
+      gateDeps: (config, log): GateHandlerDeps => {
+        seen.push(config);
+        return gateDeps(config, log);
+      },
+    });
+    expect(seen.map(({ role, clientId }) => ({ role, clientId }))).toEqual([
+      { role: 'gate', clientId: 'Iv1.gate' },
+    ]);
+  });
+
+  it('never runs the gate handler on an actor deployment', async () => {
+    let gateWired = false;
+    const deps = makeDeps();
+    const body = JSON.stringify(makePullRequestEvent());
+    await handleHttpRequest(makeHttpRequest(body, sign(body)), {
+      env: { ...GATE_ENV, ...ENV },
+      waitUntil: () => undefined,
+      log: deps.log,
+      deps: () => deps,
+      gateDeps: (config, log) => {
+        gateWired = true;
+        return gateDeps(config, log);
+      },
+    });
+    expect(gateWired).toBe(false);
+  });
+});
+
 describe('productionDeps', () => {
   it('carries the configured secret and bot login', () => {
-    const deps = productionDeps(
-      { clientId: 'Iv1.client', privateKey: 'key', webhookSecret: 's', botLogin: 'b[bot]' },
-      makeLogger(),
-    );
+    const deps = productionDeps(CONFIG, makeLogger());
     expect([deps.webhookSecret, deps.botLogin]).toEqual(['s', 'b[bot]']);
   });
 
   it('enables the proof-of-concept repository', () => {
-    const deps = productionDeps(
-      { clientId: 'Iv1.client', privateKey: 'key', webhookSecret: 's', botLogin: 'b[bot]' },
-      makeLogger(),
-    );
+    const deps = productionDeps(CONFIG, makeLogger());
     expect(deps.prLifecycleConfig('rmartz/firebase-nextjs-template')?.mode).toBe('live');
   });
 
   it('boots no sandbox for a run that never calls git', async () => {
-    const deps = productionDeps(
-      { clientId: 'Iv1.client', privateKey: 'key', webhookSecret: 's', botLogin: 'b[bot]' },
-      makeLogger(),
-    );
+    const deps = productionDeps(CONFIG, makeLogger());
     await expect(deps.createGit('ghs_token').close()).resolves.toBeUndefined();
   });
 });

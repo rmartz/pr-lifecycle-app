@@ -1,15 +1,40 @@
 ---
 type: Reference
 title: The webhook server
-description: How a delivery flows through the server — signature check, event-to-PR mapping, the per-tool repo allowlist and modes, per-repo-scoped installation tokens, background reconciles — plus its subscribed events, App permissions, environment and the proof-of-concept simplifications.
+description: How a delivery flows through the server — the actor and gate roles, signature check, event-to-PR mapping, the per-tool repo allowlist and modes, per-repo-scoped installation tokens, background reconciles — plus its subscribed events, App permissions, environment and the proof-of-concept simplifications.
 tags: [architecture, webhooks, security, github-app, config]
 ---
 
 # The webhook server
 
 One route, `POST /api/webhook` ([`api/webhook.ts`](../api/webhook.ts)), receives
-every delivery for the `rmartz-pr-lifecycle` App. `GET` on the same path returns
-the health report.
+every delivery. `GET` on the same path returns the health report.
+
+## Roles: actor and gate
+
+The repo deploys to two Vercel projects that run the same code. `PR_APP_ROLE`
+selects which App a deployment serves, and so which handler `/api/webhook`
+runs ([`src/http.ts`](../src/http.ts)):
+
+| Role    | Vercel project      | App                   | Handler                                       | What it does                                                    |
+| ------- | ------------------- | --------------------- | --------------------------------------------- | --------------------------------------------------------------- |
+| `actor` | `pr-lifecycle-app`  | `rmartz-pr-lifecycle` | [`handleWebhook`](../src/handler.ts)          | Reconciles lifecycle labels and the sign-off status; can merge. |
+| `gate`  | `pr-lifecycle-gate` | the gate App          | [`handleGateWebhook`](../src/gate-handler.ts) | Posts the `pr-policy` and `merge-safety` checks; cannot merge.  |
+
+The split keeps one leaked key from both posting a green gate **and** merging
+(decided on
+[rmartz/pr-lifecycle#134](https://github.com/rmartz/pr-lifecycle/issues/134)).
+So each role reads only its own App's variables
+([`src/server-config.ts`](../src/server-config.ts)), and each project holds
+only its own App's key. A gate deployment never wires or runs the actor
+handler, and the actor never runs the gate's. Both verify the signature first
+with their own App's webhook secret, so a delivery signed for one App is
+rejected (`401`) by the other.
+
+No gate tool is routed yet: the gate acknowledges every verified delivery as
+`unsubscribed-event` until the pr-policy and merge-safety routes land.
+
+The rest of this page describes the actor unless it says otherwise.
 
 ## A delivery, step by step
 
@@ -60,11 +85,18 @@ installation named in the payload, **scoped to that one repository**
 repository, even in the same installation. The App JWT is signed with the App's
 Client ID as issuer.
 
-The token asks for the permissions the action's App token gets, plus the reads
-the action got from the workflow token, because here one token does everything:
-contents, pull requests, issues, statuses and workflows **write**; checks
-**read**. The App must already have each of these. Subscribing to `workflow_run`
-also needs **Actions: read** on the App.
+Every token is minted with one tool's explicit `permissions`
+([`src/installation-token.ts`](../src/installation-token.ts)), so a code path
+never holds more than its tool needs.
+
+- **pr-lifecycle** (`PR_LIFECYCLE_PERMISSIONS`) asks for what the action's App
+  token gets, plus the reads the action got from the workflow token, because
+  here one token does everything: contents, pull requests, issues, statuses and
+  workflows **write**; checks **read**.
+- **Gate tools** (`GATE_PERMISSIONS`) get at most checks and statuses
+  **write**, pull requests and issues **write** (the labels they own), and
+  contents **read**. Nothing merge-capable. The App must already have each of these. Subscribing to `workflow_run`
+  also needs **Actions: read** on the App.
 
 Because the App token is a real actor, it serves both the reads and the release
 writes (the sign-off status, and arming once a repo turns it on). No
@@ -98,7 +130,8 @@ issues one sandbox command per git call; the reconcile stays synchronous.
   `carryOver.stoppedBecause: "verification failed: …"` in the logged result, and
   the earlier approval doesn't count. It is never counted unverified.
 - **Auth.** On Vercel the SDK uses the deployment's OIDC token; no secret is
-  configured.
+  configured. Only the actor role reconciles, so only the actor's project
+  (`pr-lifecycle-app`) creates sandboxes, and its OIDC token must stay enabled.
 
 Measured on `rmartz/firebase-nextjs-template` (rmartz/pr-lifecycle-app#8): about
 3 s per check end to end (boot 0.25–0.5 s, about 0.2 s per git command, a
@@ -173,15 +206,22 @@ trigger, can drop the workaround.
 
 ## Environment
 
-| Variable                      | Value                                                 |
-| ----------------------------- | ----------------------------------------------------- |
-| `PR_LIFECYCLE_CLIENT_ID`      | The App's Client ID                                   |
-| `PR_LIFECYCLE_PRIVATE_KEY`    | The App's private key (PEM; `\n`-escaped is accepted) |
-| `PR_LIFECYCLE_WEBHOOK_SECRET` | The App's webhook secret                              |
-| `PR_LIFECYCLE_APP_SLUG`       | Optional; the App slug, default `rmartz-pr-lifecycle` |
+| Variable      | Value                                                                   |
+| ------------- | ----------------------------------------------------------------------- |
+| `PR_APP_ROLE` | `actor` or `gate`; selects the route and which App's variables are read |
 
-While any of the first three is missing, every delivery gets `500` and nothing
-runs. Values are never logged.
+Each role then reads its own App's variables, and never the other's:
+
+| Actor (`rmartz-pr-lifecycle`) | Gate                     | Value                                                 |
+| ----------------------------- | ------------------------ | ----------------------------------------------------- |
+| `PR_LIFECYCLE_CLIENT_ID`      | `PR_GATE_CLIENT_ID`      | The App's Client ID                                   |
+| `PR_LIFECYCLE_PRIVATE_KEY`    | `PR_GATE_PRIVATE_KEY`    | The App's private key (PEM; `\n`-escaped is accepted) |
+| `PR_LIFECYCLE_WEBHOOK_SECRET` | `PR_GATE_WEBHOOK_SECRET` | The App's webhook secret                              |
+| `PR_LIFECYCLE_APP_SLUG`       | `PR_GATE_APP_SLUG`       | Optional; the App slug (bot login `<slug>[bot]`)      |
+
+The slugs default to `rmartz-pr-lifecycle` and `rmartz-pr-gate`. While the role
+is missing or unknown, or any of the role's first three variables is missing,
+every delivery gets `500` and nothing runs. Values are never logged.
 
 ## Proof-of-concept simplifications
 
