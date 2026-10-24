@@ -13,8 +13,8 @@ in-repo workflow keep using
 [`rmartz/pr-lifecycle-action`](https://github.com/rmartz/pr-lifecycle-action); a
 repo runs one or the other, never both.
 
-> **Status:** proof of concept. The server runs in shadow (dry-run) mode for
-> `rmartz/firebase-nextjs-template` only; see
+> **Status:** proof of concept. The server reconciles
+> `rmartz/firebase-nextjs-template` only, live; see
 > [docs/server.md](docs/server.md) and
 > [rmartz/pr-lifecycle#134](https://github.com/rmartz/pr-lifecycle/issues/134).
 
