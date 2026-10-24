@@ -1,4 +1,6 @@
 environment: production
 variables:
+  # Selects the actor route (src/server-config.ts).
+  PR_APP_ROLE: actor
   # The App's public Client ID; envctl also signs the App JWT as this issuer.
   PR_LIFECYCLE_CLIENT_ID: Iv23liDeO4LMsYKXJbmZ

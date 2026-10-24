@@ -1,18 +1,33 @@
 import githubAppJwt from 'universal-github-app-jwt';
 
+/** An installation token's permission grant, by GitHub permission name. */
+export type TokenPermissions = Readonly<Record<string, 'read' | 'write'>>;
+
 /**
- * The permissions each installation token is minted with: the same set
+ * The permissions a pr-lifecycle token is minted with: the same set
  * rmartz/pr-lifecycle-action asks `create-github-app-token` for, plus the reads
  * the action got from the workflow token, because here one token does everything.
  */
-export const TOKEN_PERMISSIONS = {
+export const PR_LIFECYCLE_PERMISSIONS = {
   contents: 'write',
   pull_requests: 'write',
   issues: 'write',
   statuses: 'write',
   workflows: 'write',
   checks: 'read',
-} as const;
+} as const satisfies TokenPermissions;
+
+/**
+ * The most a gate tool's token is minted with: its check-run and statuses, the
+ * labels it owns, and read access to contents. Nothing merge-capable.
+ */
+export const GATE_PERMISSIONS = {
+  checks: 'write',
+  statuses: 'write',
+  pull_requests: 'write',
+  issues: 'write',
+  contents: 'read',
+} as const satisfies TokenPermissions;
 
 export interface AppCredentials {
   /** The App's Client ID (a JWT issuer GitHub accepts in place of the App ID). */
@@ -22,6 +37,8 @@ export interface AppCredentials {
 }
 
 export interface TokenMinterOptions extends AppCredentials {
+  /** What every token this minter mints may do: one tool's explicit set. */
+  readonly permissions: TokenPermissions;
   readonly apiUrl?: string;
   readonly fetch?: typeof fetch;
   /** Signs the App JWT; tests inject one. */
@@ -40,9 +57,10 @@ async function signAppJwt(credentials: AppCredentials): Promise<string> {
 }
 
 /**
- * Builds a minter for installation access tokens. Each token is scoped to the one
- * repository the event is about (`repositories: [repo]`), so a token minted for an
- * event can never act on another repository, even within the same installation.
+ * Builds a minter for installation access tokens with one tool's permissions.
+ * Each token is scoped to the one repository the event is about
+ * (`repositories: [repo]`), so a token minted for an event can never act on
+ * another repository, even within the same installation.
  */
 export function createTokenMinter(options: TokenMinterOptions): MintToken {
   const apiUrl = options.apiUrl ?? 'https://api.github.com';
@@ -58,7 +76,7 @@ export function createTokenMinter(options: TokenMinterOptions): MintToken {
         'content-type': 'application/json',
         'x-github-api-version': '2022-11-28',
       },
-      body: JSON.stringify({ repositories: [repo], permissions: TOKEN_PERMISSIONS }),
+      body: JSON.stringify({ repositories: [repo], permissions: options.permissions }),
     });
     if (!response.ok) {
       throw new Error(

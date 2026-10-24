@@ -59,6 +59,12 @@ The design is tracked in
 The proof of concept settled the hosting, the App identity, self-triggered events
 and per-repo policy. It deliberately deferred approval carry-over (which needs
 git), per-PR serialization and a missed-delivery sweep; see
-[its simplifications](server.md#proof-of-concept-simplifications). Coexistence
-with the merge-safety and pr-policy workflows is unchanged: they stay Actions
-workflows. Record each decision on a page in this bundle when it is made.
+[its simplifications](server.md#proof-of-concept-simplifications).
+
+The server is growing into the fleet's PR server (epic
+[#5](https://github.com/rmartz/pr-lifecycle-app/issues/5)). It runs as two Apps
+from two Vercel projects: the **actor** (`rmartz-pr-lifecycle`) and a **gate**
+App that will post the `pr-policy` and `merge-safety` checks; see
+[Roles](server.md#roles-actor-and-gate). Until each gate route lands and a repo
+cuts over, those checks stay Actions workflows. Record each decision on a page
+in this bundle when it is made.

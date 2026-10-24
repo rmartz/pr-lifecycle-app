@@ -4,6 +4,8 @@ deployments:
   - provider: vercel
     targets: { production: production }
 
+# The actor project, pr-lifecycle-app. Run envctl against it with
+# `--deployment-dir deployment/actor` (see docs/development.md).
 services:
   # The rmartz-pr-lifecycle App's secrets, managed by
   # `envctl secrets init|rotate github-app --private-key-file <pem>`.

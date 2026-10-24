@@ -1,6 +1,10 @@
 import { generateKeyPairSync } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { createTokenMinter, TOKEN_PERMISSIONS } from '../src/installation-token.js';
+import {
+  createTokenMinter,
+  GATE_PERMISSIONS,
+  PR_LIFECYCLE_PERMISSIONS,
+} from '../src/installation-token.js';
 
 interface Captured {
   url: string;
@@ -29,6 +33,7 @@ describe('createTokenMinter', () => {
     const mint = createTokenMinter({
       clientId: 'Iv1.client',
       privateKey: 'unused',
+      permissions: PR_LIFECYCLE_PERMISSIONS,
       sign,
       fetch: fakeFetch(Response.json({ token: 'ghs_minted' }, { status: 201 }), captured),
     });
@@ -37,8 +42,34 @@ describe('createTokenMinter', () => {
     const body = captured[0]?.init?.body;
     expect(JSON.parse(typeof body === 'string' ? body : '')).toEqual({
       repositories: ['firebase-nextjs-template'],
-      permissions: TOKEN_PERMISSIONS,
+      permissions: PR_LIFECYCLE_PERMISSIONS,
     });
+  });
+
+  it("asks for exactly the minter's permissions, so a gate token gets the gate set", async () => {
+    const captured: Captured[] = [];
+    const mint = createTokenMinter({
+      clientId: 'Iv1.gate',
+      privateKey: 'unused',
+      permissions: GATE_PERMISSIONS,
+      sign,
+      fetch: fakeFetch(Response.json({ token: 'ghs_minted' }, { status: 201 }), captured),
+    });
+    await mint(888, 'repo');
+    const body = captured[0]?.init?.body;
+    expect(JSON.parse(typeof body === 'string' ? body : '')).toMatchObject({
+      permissions: {
+        checks: 'write',
+        statuses: 'write',
+        pull_requests: 'write',
+        issues: 'write',
+        contents: 'read',
+      },
+    });
+  });
+
+  it('never grants a gate token a merge-capable permission', () => {
+    expect(['workflows' in GATE_PERMISSIONS, GATE_PERMISSIONS.contents]).toEqual([false, 'read']);
   });
 
   it('authenticates with the App JWT', async () => {
@@ -46,6 +77,7 @@ describe('createTokenMinter', () => {
     const mint = createTokenMinter({
       clientId: 'Iv1.client',
       privateKey: 'unused',
+      permissions: PR_LIFECYCLE_PERMISSIONS,
       sign,
       fetch: fakeFetch(Response.json({ token: 'ghs_minted' }, { status: 201 }), captured),
     });
@@ -57,6 +89,7 @@ describe('createTokenMinter', () => {
     const mint = createTokenMinter({
       clientId: 'Iv1.client',
       privateKey: 'unused',
+      permissions: PR_LIFECYCLE_PERMISSIONS,
       sign,
       fetch: fakeFetch(Response.json({ token: 'ghs_minted' }, { status: 201 }), []),
     });
@@ -67,6 +100,7 @@ describe('createTokenMinter', () => {
     const mint = createTokenMinter({
       clientId: 'Iv1.client',
       privateKey: 'unused',
+      permissions: PR_LIFECYCLE_PERMISSIONS,
       sign,
       fetch: fakeFetch(new Response('not installed', { status: 404 }), []),
     });
@@ -79,6 +113,7 @@ describe('createTokenMinter', () => {
     const mint = createTokenMinter({
       clientId: 'Iv1.client',
       privateKey: 'unused',
+      permissions: PR_LIFECYCLE_PERMISSIONS,
       sign,
       fetch: fakeFetch(Response.json({ expires_at: 'soon' }, { status: 201 }), []),
     });
@@ -90,6 +125,7 @@ describe('createTokenMinter', () => {
     const captured: Captured[] = [];
     const mint = createTokenMinter({
       clientId: 'Iv1.client',
+      permissions: PR_LIFECYCLE_PERMISSIONS,
       privateKey: privateKey.export({ type: 'pkcs1', format: 'pem' }).toString(),
       fetch: fakeFetch(Response.json({ token: 'ghs_minted' }, { status: 201 }), captured),
     });
