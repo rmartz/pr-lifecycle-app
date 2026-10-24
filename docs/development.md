@@ -121,22 +121,21 @@ config directory, all on the **Production** target only.
 | `PR_LIFECYCLE_PRIVATE_KEY`    | `PR_GATE_PRIVATE_KEY`    | Vercel sensitive         | `envctl secrets init` / `rotate github-app` |
 | `PR_LIFECYCLE_WEBHOOK_SECRET` | `PR_GATE_WEBHOOK_SECRET` | Vercel sensitive, minted | `envctl secrets init` / `rotate github-app` |
 
-**Point every envctl command at one project.** envctl reads its config from
-`--deployment-dir` (default `deployment`, which no longer exists here), and
-finds the Vercel project from `.vercel/project.json` or `VERCEL_PROJECT_ID`.
-So always pass both, for the same project:
+**Pick the project with `--deployment-dir`.** Each directory's manifest pins
+its Vercel project (`projectId` and `teamId`), so the directory alone decides
+where its variables and secrets go. Pass it to every envctl command (envctl
+3.7.0 or later); the default `deployment` doesn't exist here:
 
 ```bash
-VERCEL_PROJECT_ID=prj_kAQC6gawmmBbN1j1ag02pA2TqIGe VERCEL_TEAM_ID=team_kVIsLOZBHQLTMtnVSltoDb1g envctl config push --env production --deployment-dir deployment/gate
+envctl config push --env production --deployment-dir deployment/gate
 ```
 
-For the actor, use `prj_Hk4QmeVi1BYi48RAPpcne95x3Ptv` and `deployment/actor`.
-Mixing one project's ID with the other's directory would push one App's
-credentials into the other's environment, which is exactly what the split
-prevents.
+Use `deployment/actor` for the actor. envctl refuses to run if a `.vercel` link
+or `VERCEL_PROJECT_ID` names a different project than the pin, so one App's
+credentials can't land in the other's project.
 
-`envctl secrets init github-app --private-key-file <pem>` (with the same two
-settings) pushes the private key and a generated webhook secret, redeploys
+`envctl secrets init github-app --private-key-file <pem>` (with the same
+`--deployment-dir`) pushes the private key and a generated webhook secret, redeploys
 production, then points the App's webhook at its project's
 `/api/webhook` with that secret. The App's webhook must be **Active** first, or
 envctl refuses before pushing anything, and its Client ID must already be in
