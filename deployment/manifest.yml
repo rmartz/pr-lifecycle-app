@@ -1,0 +1,43 @@
+environments: [production]
+
+# Both GitHub Apps' secrets, managed by
+# `envctl secrets init|rotate github-app --deployment <name> --private-key-file <pem>`.
+# Each deployment lists only its own App, so envctl never puts one App's key in
+# the other's project.
+services:
+  # The rmartz-pr-lifecycle App (the actor).
+  - name: actor-app
+    provider: github-app
+    environments: [production]
+    webhookUrl: https://pr-lifecycle-app.vercel.app/api/webhook
+    variables:
+      clientId: PR_LIFECYCLE_CLIENT_ID
+      privateKey: PR_LIFECYCLE_PRIVATE_KEY
+      webhookSecret: PR_LIFECYCLE_WEBHOOK_SECRET
+  # The gate App.
+  - name: gate-app
+    provider: github-app
+    environments: [production]
+    webhookUrl: https://pr-lifecycle-gate.vercel.app/api/webhook
+    variables:
+      clientId: PR_GATE_CLIENT_ID
+      privateKey: PR_GATE_PRIVATE_KEY
+      webhookSecret: PR_GATE_WEBHOOK_SECRET
+
+# One entry per Vercel project, selected with `--deployment <name>` (see
+# docs/development.md). Each pins its project, so envctl refuses a .vercel
+# link or VERCEL_PROJECT_ID naming another one. Per-deployment public vars live
+# in deployment/<name>/production.yml.
+deployments:
+  - name: actor
+    provider: vercel
+    projectId: prj_Hk4QmeVi1BYi48RAPpcne95x3Ptv
+    teamId: team_kVIsLOZBHQLTMtnVSltoDb1g
+    services: [actor-app]
+    targets: { production: production }
+  - name: gate
+    provider: vercel
+    projectId: prj_kAQC6gawmmBbN1j1ag02pA2TqIGe
+    teamId: team_kVIsLOZBHQLTMtnVSltoDb1g
+    services: [gate-app]
+    targets: { production: production }

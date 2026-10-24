@@ -75,10 +75,10 @@ The repo deploys to **two Vercel projects** on the `reed-8753s-projects` team,
 one per [role](server.md#roles-actor-and-gate). Both run the same code from the
 same repo and differ only in their env vars:
 
-| Project             | ID                                 | `PR_APP_ROLE` | URL                                    | envctl config       |
-| ------------------- | ---------------------------------- | ------------- | -------------------------------------- | ------------------- |
-| `pr-lifecycle-app`  | `prj_Hk4QmeVi1BYi48RAPpcne95x3Ptv` | `actor`       | `https://pr-lifecycle-app.vercel.app`  | `deployment/actor/` |
-| `pr-lifecycle-gate` | `prj_kAQC6gawmmBbN1j1ag02pA2TqIGe` | `gate`        | `https://pr-lifecycle-gate.vercel.app` | `deployment/gate/`  |
+| Project             | ID                                 | `PR_APP_ROLE` | URL                                    | envctl deployment |
+| ------------------- | ---------------------------------- | ------------- | -------------------------------------- | ----------------- |
+| `pr-lifecycle-app`  | `prj_Hk4QmeVi1BYi48RAPpcne95x3Ptv` | `actor`       | `https://pr-lifecycle-app.vercel.app`  | `actor`           |
+| `pr-lifecycle-gate` | `prj_kAQC6gawmmBbN1j1ag02pA2TqIGe` | `gate`        | `https://pr-lifecycle-gate.vercel.app` | `gate`            |
 
 Each is deployed by **Vercel's Git integration**, so there is no deploy
 workflow here:
@@ -108,11 +108,12 @@ workflow here:
 
 ## Secrets and env vars (envctl)
 
-Each project's variables are declared for
-[envctl](https://github.com/rmartz/envctl)'s `github-app` provider in its own
-config directory, all on the **Production** target only.
-[`deployment/actor/`](../deployment/actor/manifest.yml) covers the actor and
-[`deployment/gate/`](../deployment/gate/manifest.yml) the gate:
+Both projects are declared in one
+[envctl](https://github.com/rmartz/envctl) manifest,
+[`deployment/manifest.yml`](../deployment/manifest.yml), as the `actor` and
+`gate` deployments, all on the **Production** target only. Each deployment pins
+its Vercel project and lists only its own App's `github-app` service. Its public
+variables live in `deployment/<name>/production.yml`:
 
 | Actor variable                | Gate variable            | Kind                     | Managed by                                  |
 | ----------------------------- | ------------------------ | ------------------------ | ------------------------------------------- |
@@ -121,27 +122,27 @@ config directory, all on the **Production** target only.
 | `PR_LIFECYCLE_PRIVATE_KEY`    | `PR_GATE_PRIVATE_KEY`    | Vercel sensitive         | `envctl secrets init` / `rotate github-app` |
 | `PR_LIFECYCLE_WEBHOOK_SECRET` | `PR_GATE_WEBHOOK_SECRET` | Vercel sensitive, minted | `envctl secrets init` / `rotate github-app` |
 
-**Pick the project with `--deployment-dir`.** Each directory's manifest pins
-its Vercel project (`projectId` and `teamId`), so the directory alone decides
-where its variables and secrets go. Pass it to every envctl command (envctl
-3.7.0 or later); the default `deployment` doesn't exist here:
+**Pick the project with `--deployment`.** Pass `--deployment actor` or
+`--deployment gate` to every envctl command (envctl 3.9.0 or later). Without
+it, envctl refuses, because the manifest declares two deployments:
 
 ```bash
-envctl config push --env production --deployment-dir deployment/gate
+envctl config push --env production --deployment gate
 ```
 
-Use `deployment/actor` for the actor. envctl refuses to run if a `.vercel` link
-or `VERCEL_PROJECT_ID` names a different project than the pin, so one App's
-credentials can't land in the other's project.
+The name alone decides where variables and secrets go. envctl refuses to run if
+a `.vercel` link or `VERCEL_PROJECT_ID` names a different project than the
+deployment's pin, and a deployment never sees the other App's service, so one
+App's credentials can't land in the other's project.
 
-`envctl secrets init github-app --private-key-file <pem>` (with the same
-`--deployment-dir`) pushes the private key and a generated webhook secret, redeploys
+`envctl secrets init github-app --deployment <name> --private-key-file <pem>`
+pushes the private key and a generated webhook secret, redeploys
 production, then points the App's webhook at its project's
 `/api/webhook` with that secret. The App's webhook must be **Active** first, or
 envctl refuses before pushing anything, and its Client ID must already be in
 the YAML and pushed, because envctl signs the App JWT with it.
 
-`envctl secrets rotate github-app --private-key-file <pem>` re-mints the webhook
+`envctl secrets rotate github-app --deployment <name> --private-key-file <pem>` re-mints the webhook
 secret and pushes the PEM as the App's key. It redeploys, proves the key with
 `GET /app`, and only then updates GitHub's webhook config. To rotate the private
 key, generate a new one on the App's settings page and pass that PEM. When the
