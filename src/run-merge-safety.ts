@@ -88,6 +88,14 @@ export async function runMergeSafetyEvaluate(
 ): Promise<void> {
   const run = await prepare(target.repository, config, deliveryId, deps);
   if (run === undefined) return;
+  try {
+    await evaluateTargets(run, target);
+  } catch (error) {
+    deps.log.error('merge-safety run failed', { ...run.context, error: describe(error) });
+  }
+}
+
+async function evaluateTargets(run: Run, target: EventTarget): Promise<void> {
   let prs = target.prs;
   if (prs.length === 0 && target.headSha !== undefined) {
     const pulls = await openPullsAtHead(run, target.headSha);
@@ -112,6 +120,19 @@ export async function runMergeSafetyInvalidate(
 ): Promise<void> {
   const run = await prepare(repository, config, deliveryId, deps);
   if (run === undefined) return;
+  try {
+    await invalidate(run, baseBranch);
+  } catch (error) {
+    deps.log.error('merge-safety run failed', {
+      ...run.context,
+      baseBranch,
+      error: describe(error),
+    });
+  }
+}
+
+async function invalidate(run: Run, baseBranch: string): Promise<void> {
+  const { config, deps } = run;
   const pulls = await openPullsOnBase(run.client, run.repo, baseBranch);
   if (pulls === undefined) {
     deps.log.error('could not list the open PRs on the moved base', { ...run.context, baseBranch });

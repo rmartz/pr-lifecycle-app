@@ -242,6 +242,30 @@ describe('runMergeSafetyInvalidate', () => {
   });
 });
 
+describe('merge-safety runs never throw', () => {
+  const throwing = () => {
+    const client = makeFakeClient();
+    client.list = () => Promise.reject(new Error('socket hang up'));
+    return client;
+  };
+
+  it('logs an invalidation whose PR listing throws', async () => {
+    const deps = makeGateDeps({ client: throwing() });
+    await runMergeSafetyInvalidate(REPOSITORY, 'main', MS_SHADOW, 'd-1', deps);
+    expect(deps.log.entries.at(-1)).toMatchObject({
+      level: 'error',
+      message: 'merge-safety run failed',
+      fields: { error: 'socket hang up' },
+    });
+  });
+
+  it('logs a Re-run whose head lookup throws', async () => {
+    const deps = makeGateDeps({ client: throwing() });
+    await runMergeSafetyEvaluate(target([], 'head1'), MS_SHADOW, 'd-1', deps);
+    expect(deps.log.entries.at(-1)?.message).toBe('merge-safety run failed');
+  });
+});
+
 describe('mergeSafetyName', () => {
   it('is the shadow name in shadow mode', () => {
     expect(mergeSafetyName(MS_SHADOW)).toBe('merge-safety (app)');
