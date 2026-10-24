@@ -99,6 +99,18 @@ describe('createSandboxGit: fails closed', () => {
     );
   });
 
+  it('names the subcommand past --git-dir when a command fails', async () => {
+    const sandbox = makeSandbox(() => Promise.reject(new Error('session stopped')));
+    const { git } = createSandboxGit(
+      TOKEN,
+      makeOpener(() => Promise.resolve(sandbox)),
+      OPTIONS,
+    );
+    await expect(git.run(['--git-dir', '/tmp/lineage', 'fetch', '--quiet'])).rejects.toThrow(
+      'git fetch in the sandbox failed: session stopped',
+    );
+  });
+
   it('rejects when a command errors', async () => {
     const sandbox = makeSandbox(() => Promise.reject(new Error('session stopped')));
     const { git } = createSandboxGit(

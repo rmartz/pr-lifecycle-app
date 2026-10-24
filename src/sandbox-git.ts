@@ -79,7 +79,7 @@ export function createSandboxGit(
         try {
           return await runOnce(args);
         } catch (error) {
-          failure = new Error(`git ${args[0] ?? ''} in the sandbox failed: ${describe(error)}`, {
+          failure = new Error(`git ${subcommand(args)} in the sandbox failed: ${describe(error)}`, {
             cause: error,
           });
           throw failure;
@@ -105,6 +105,12 @@ export function createSandboxGit(
       }
     },
   };
+}
+
+/** The git subcommand, past the `--git-dir <dir>` the library puts first. */
+function subcommand(args: readonly string[]): string {
+  const start = args[0] === '--git-dir' ? 2 : 0;
+  return args[start] ?? '';
 }
 
 function describe(error: unknown): string {
