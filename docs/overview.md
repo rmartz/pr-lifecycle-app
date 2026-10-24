@@ -57,8 +57,9 @@ including [cutting a repo over](server.md#repo-allowlist).
 The design is tracked in
 [rmartz/pr-lifecycle#134](https://github.com/rmartz/pr-lifecycle/issues/134).
 The proof of concept settled the hosting, the App identity, self-triggered events
-and per-repo policy. It deliberately deferred approval carry-over (which needs
-git), per-PR serialization and a missed-delivery sweep; see
+and per-repo policy. Approval carry-over, which needs git, runs in a Vercel
+Sandbox (see [Approval carry-over](server.md#approval-carry-over)). Per-PR
+serialization and a missed-delivery sweep are still deferred; see
 [its simplifications](server.md#proof-of-concept-simplifications). Coexistence
 with the merge-safety and pr-policy workflows is unchanged: they stay Actions
 workflows. Record each decision on a page in this bundle when it is made.

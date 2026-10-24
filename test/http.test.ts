@@ -73,4 +73,12 @@ describe('productionDeps', () => {
     );
     expect(deps.prLifecycleConfig('rmartz/firebase-nextjs-template')?.mode).toBe('live');
   });
+
+  it('boots no sandbox for a run that never calls git', async () => {
+    const deps = productionDeps(
+      { clientId: 'Iv1.client', privateKey: 'key', webhookSecret: 's', botLogin: 'b[bot]' },
+      makeLogger(),
+    );
+    await expect(deps.createGit('ghs_token').close()).resolves.toBeUndefined();
+  });
 });

@@ -32,7 +32,8 @@ the health report.
    `waitUntil`.
 4. **Reconcile** ([`src/run-target.ts`](../src/run-target.ts)). Mints an
    installation token, resolves the PRs, and calls the library's
-   `reconcilePullRequest` once per PR with the repo's policy. Each result is
+   `reconcilePullRequest` once per PR with the repo's policy and a sandboxed git
+   for [approval carry-over](#approval-carry-over). Each result is
    logged in the CLI's `--json` shape, so shadow-mode plans can be compared with
    the action's `results` output. Failures are logged and never thrown; the next
    event converges the PR.
@@ -68,6 +69,52 @@ also needs **Actions: read** on the App.
 Because the App token is a real actor, it serves both the reads and the release
 writes (the sign-off status, and arming once a repo turns it on). No
 `release: 'unavailable'` fallback applies.
+
+## Approval carry-over
+
+A review on an earlier commit still counts after a clean rebase or base merge,
+as with the action. The library verifies that with `git merge-tree`, which has
+no REST equivalent, so the server runs git in a
+[Vercel Sandbox](https://vercel.com/docs/sandbox) microVM
+([`src/sandbox-git.ts`](../src/sandbox-git.ts),
+[`src/vercel-sandbox.ts`](../src/vercel-sandbox.ts)). The library's `GitRunner`
+issues one sandbox command per git call; the reconcile stays synchronous.
+
+- **Lazy, one per run.** The VM boots on the first git call, so a PR with no
+  review on an earlier commit never creates one. A run's PRs share it, and it is
+  stopped when the run ends. It has 1 vCPU, the `vercel/sandbox/universal` image
+  (git 2.53; the minimal `ubuntu` image has none), no persistence, and a 300 s
+  lifetime bounding a VM orphaned by a killed function.
+- **The token never enters the VM.** The library would pass the fetch token as
+  git config; the runner drops that env. The sandbox's firewall injects the
+  installation token instead, and only on git's fetch endpoints
+  (`info/refs?service=git-upload-pack`, `git-upload-pack`) on `github.com`.
+  Every other `github.com` request, a push included, gets a `403` from the
+  firewall, so the token's write scope is unreachable. Every other domain is
+  denied.
+- **Fails closed.** A boot failure, a quota or concurrency limit, a command
+  error, or a command (boot included) over 60 s rejects the git call, and every
+  later call in the run rejects without retrying. The library records that as
+  `carryOver.stoppedBecause: "verification failed: …"` in the logged result, and
+  the earlier approval doesn't count. It is never counted unverified.
+- **Auth.** On Vercel the SDK uses the deployment's OIDC token; no secret is
+  configured.
+
+Measured on `rmartz/firebase-nextjs-template` (rmartz/pr-lifecycle-app#8): about
+3 s per check end to end (boot 0.25–0.5 s, about 0.2 s per git command, a
+depth-1 fetch about 0.5 s, stop about 1.2 s). The library's worst case (20 merge
+steps and 3 rebase checks) is about 25 s, well within the 300 s function.
+
+**Limits.** The team is on Vercel Hobby: 5,000 sandbox creations, 5 active-CPU
+hours and 420 GB-hours of memory a month, and 10 concurrent sandboxes. Past a
+quota, creation pauses until the cycle resets and carry-over fails closed;
+nothing is billed. On Pro, a run costs about $0.0007.
+
+**Fallback.** If Sandbox capacity or cost stops fitting, the App dispatches a
+small central workflow that runs the git check on an Actions runner, as decided
+on [rmartz/pr-lifecycle#134](https://github.com/rmartz/pr-lifecycle/issues/134).
+That makes carry-over asynchronous: the verdict counts only from the reconcile
+after the workflow reports back.
 
 ## Repo allowlist
 
@@ -142,9 +189,6 @@ Decided on
 [rmartz/pr-lifecycle#134](https://github.com/rmartz/pr-lifecycle/issues/134#issuecomment-6389456491);
 each is revisited before a wider rollout:
 
-- **Approval carry-over is off.** No `lineage` option is passed, so no git is
-  needed. It fails closed: a verdict on an earlier commit doesn't count after a
-  rebase.
 - **No per-PR serialization.** Concurrent deliveries for one PR may reconcile in
   parallel. Each run recomputes from current facts and the settle wait re-gathers,
   so they converge.

@@ -1,5 +1,6 @@
 import type {
   GitHubClient,
+  GitRunner,
   HttpClientOptions,
   ReconcileOptions,
   ReconcilePolicy,
@@ -11,6 +12,7 @@ import type { MintToken } from './installation-token.js';
 import type { LogFields, Logger } from './logger.js';
 import type { FindOpenPulls } from './open-pulls.js';
 import type { ActiveToolConfig } from './repos.js';
+import type { SandboxGit } from './sandbox-git.js';
 
 /** pr-lifecycle's settings for a repo it acts on. */
 export type PrLifecycleConfig = ActiveToolConfig<ReconcilePolicy>;
@@ -20,6 +22,8 @@ export interface RunDeps {
   readonly mintToken: MintToken;
   readonly createClient: (options: HttpClientOptions) => GitHubClient;
   readonly findOpenPulls: FindOpenPulls;
+  /** The git for approval carry-over, which fetches with `token`. One per run. */
+  readonly createGit: (token: string) => SandboxGit;
   readonly reconcile: (
     client: GitHubClient,
     pr: number,
@@ -32,9 +36,9 @@ export interface RunDeps {
 /**
  * Reconciles every PR an event targets, with a token minted for the event's own
  * installation and repository. The App token is a real actor, so it serves both
- * reads and the release writes (arming, the sign-off status); carry-over is off,
- * as no git is available (it fails closed). Never throws: a failure is logged,
- * and the next event for the PR converges it.
+ * reads and the release writes (arming, the sign-off status). Approval carry-over
+ * runs git in one sandbox shared by the run's PRs, stopped when the run ends.
+ * Never throws: a failure is logged, and the next event for the PR converges it.
  */
 export async function runTarget(
   target: EventTarget,
@@ -61,8 +65,16 @@ export async function runTarget(
     return;
   }
   const client = deps.createClient({ token, owner: repository.owner, repo: repository.name });
-  for (const pr of [...new Set(prs)].sort((a, b) => a - b)) {
-    await reconcileOne(client, pr, repository, config, context, deps);
+  const sandboxGit = deps.createGit(token);
+  try {
+    for (const pr of [...new Set(prs)].sort((a, b) => a - b)) {
+      await reconcileOne(client, pr, repository, config, context, deps, sandboxGit.git);
+    }
+  } finally {
+    const stopError = await sandboxGit.close();
+    if (stopError !== undefined) {
+      deps.log.warn('could not stop the git sandbox', { ...context, error: stopError });
+    }
   }
 }
 
@@ -73,11 +85,13 @@ async function reconcileOne(
   config: PrLifecycleConfig,
   context: LogFields,
   deps: RunDeps,
+  git: GitRunner,
 ): Promise<void> {
   try {
     // Shadow plans and logs without writing; only live writes.
     const dryRun = config.mode !== 'live';
-    const result = await deps.reconcile(client, pr, config.policy, { dryRun });
+    // No `lineage.token`: the sandbox's firewall authenticates git's fetches.
+    const result = await deps.reconcile(client, pr, config.policy, { dryRun, lineage: { git } });
     const target = { owner: repository.owner, repo: repository.name, pr, dryRun };
     const json = toReconcileJson(target, result);
     deps.log.info('reconciled', { ...context, pr, result: json });

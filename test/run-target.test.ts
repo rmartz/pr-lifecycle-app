@@ -2,7 +2,7 @@ import { GitHubApiError } from '@rmartz/pr-lifecycle';
 import { describe, expect, it } from 'vitest';
 import type { EventTarget } from '../src/events.js';
 import { runTarget } from '../src/run-target.js';
-import { INSTALLATION_ID, makeDeps, REPO_ID, TEMPLATE_CONFIG } from './fixtures.js';
+import { INSTALLATION_ID, makeDeps, makeSandboxGit, REPO_ID, TEMPLATE_CONFIG } from './fixtures.js';
 
 function makeTarget(overrides: Partial<EventTarget> = {}): EventTarget {
   return {
@@ -41,15 +41,62 @@ describe('runTarget', () => {
   it('reconciles a shadow repo with its policy as a dry run', async () => {
     const deps = makeDeps();
     await runTarget(makeTarget(), TEMPLATE_CONFIG, 'd-1', deps);
-    expect(deps.reconciles.map(({ pr, policy, options }) => ({ pr, policy, options }))).toEqual([
-      { pr: 31, policy: { uat: 'on', armAutoMerge: false }, options: { dryRun: true } },
-    ]);
+    expect(
+      deps.reconciles.map(({ pr, policy, options }) => ({ pr, policy, dryRun: options.dryRun })),
+    ).toEqual([{ pr: 31, policy: { uat: 'on', armAutoMerge: false }, dryRun: true }]);
+  });
+
+  it('turns carry-over on with the git built from the minted token', async () => {
+    const deps = makeDeps();
+    await runTarget(makeTarget(), TEMPLATE_CONFIG, 'd-1', deps);
+    expect(deps.gits.map(({ token }) => token)).toEqual(['token-for-777-firebase-nextjs-template']);
+  });
+
+  it('hands the library the sandbox git and never the token', async () => {
+    const sandboxGit = makeSandboxGit();
+    const deps = makeDeps({ createGit: () => sandboxGit });
+    await runTarget(makeTarget(), TEMPLATE_CONFIG, 'd-1', deps);
+    expect(deps.reconciles[0]?.options.lineage).toStrictEqual({ git: sandboxGit.git });
+  });
+
+  it("shares one sandbox git across the run's PRs", async () => {
+    const deps = makeDeps();
+    await runTarget(makeTarget({ prs: [1, 2] }), TEMPLATE_CONFIG, 'd-1', deps);
+    expect(deps.gits).toHaveLength(1);
+  });
+
+  it('stops the sandbox once the run ends', async () => {
+    const deps = makeDeps();
+    await runTarget(makeTarget(), TEMPLATE_CONFIG, 'd-1', deps);
+    expect(deps.gits.map(({ closed }) => closed)).toEqual([true]);
+  });
+
+  it('stops the sandbox even when a reconcile fails', async () => {
+    const deps = makeDeps({ reconcile: () => Promise.reject(new Error('boom')) });
+    await runTarget(makeTarget(), TEMPLATE_CONFIG, 'd-1', deps);
+    expect(deps.gits.map(({ closed }) => closed)).toEqual([true]);
+  });
+
+  it('logs a sandbox that would not stop as a warning', async () => {
+    const deps = makeDeps({ createGit: () => makeSandboxGit(() => 'stop failed') });
+    await runTarget(makeTarget(), TEMPLATE_CONFIG, 'd-1', deps);
+    expect(deps.log.entries.at(-1)).toEqual({
+      level: 'warn',
+      message: 'could not stop the git sandbox',
+      fields: { delivery: 'd-1', repo: 'rmartz/firebase-nextjs-template', error: 'stop failed' },
+    });
+  });
+
+  it('builds no sandbox git when there is no PR to reconcile', async () => {
+    const deps = makeDeps({ findOpenPulls: () => Promise.resolve([]) });
+    await runTarget(makeTarget({ prs: [], headSha: 'abc123' }), TEMPLATE_CONFIG, 'd-1', deps);
+    expect(deps.gits).toEqual([]);
   });
 
   it('reconciles a live repo with writes', async () => {
     const deps = makeDeps();
     await runTarget(makeTarget(), { ...TEMPLATE_CONFIG, mode: 'live' }, 'd-1', deps);
-    expect(deps.reconciles.map(({ options }) => options)).toEqual([{ dryRun: false }]);
+    expect(deps.reconciles.map(({ options }) => options.dryRun)).toEqual([false]);
   });
 
   it('logs a live result as not a dry run', async () => {
