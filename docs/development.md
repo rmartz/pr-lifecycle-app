@@ -82,16 +82,16 @@ is no deploy workflow here:
 - **Project and build.** The project is `pr-lifecycle-app` on the
   `reed-8753s-projects` team, served at `https://pr-lifecycle-app.vercel.app`.
   The build runs `pnpm run build` as a compile check. The static output is
-  `public/`, which holds only a deny-all [`robots.txt`](../public/robots.txt). Without an
-  explicit output directory, Vercel would serve the repo root as static files.
+  `public/`, which holds only a deny-all [`robots.txt`](../public/robots.txt).
+  Without an explicit output directory, Vercel would serve the repo root as
+  static files.
   Locally, `vercel link` writes `.vercel/`, which is gitignored.
 - **Function limits.** `api/webhook.ts` gets `maxDuration: 300`, room for the
   30-second settle wait plus fact-gathering. The webhook itself is acknowledged
   first; see [The webhook server](server.md#a-delivery-step-by-step).
-- **Secrets.** The App's Client ID, private key and webhook secret are Vercel
-  environment variables, set in the **Production** environment only (names in
-  [The webhook server](server.md#environment)). Never commit them, and never put
-  them in Actions logs. `.gitignore` already excludes `.env*` and `*.pem`.
+- **Secrets.** See [Secrets and env vars](#secrets-and-env-vars-envctl). Never
+  commit them or put them in Actions logs; `.gitignore` excludes `.env*` and
+  `*.pem`.
 - **Rollback.** Promote the previous production deployment in Vercel
   (`vercel rollback`, or Instant Rollback in the dashboard), then revert on
   `main`. To stop the App acting on a repo immediately, remove it from
