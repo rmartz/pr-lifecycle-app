@@ -2,3 +2,7 @@ environment: production
 variables:
   # Selects the gate route (src/server-config.ts).
   PR_APP_ROLE: gate
+  # The gate App's public Client ID; envctl also signs the App JWT as this issuer.
+  PR_GATE_CLIENT_ID: Iv23lioiNU0MNCrHuQI8
+  # The gate App's slug; its bot login is `<slug>[bot]`, so the gate skips its own writes.
+  PR_GATE_APP_SLUG: rmartz-pr-lifecycle-gate

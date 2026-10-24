@@ -333,7 +333,10 @@ Each role then reads its own App's variables, and never the other's:
 | `PR_LIFECYCLE_WEBHOOK_SECRET` | `PR_GATE_WEBHOOK_SECRET` | The App's webhook secret                              |
 | `PR_LIFECYCLE_APP_SLUG`       | `PR_GATE_APP_SLUG`       | Optional; the App slug (bot login `<slug>[bot]`)      |
 
-The slugs default to `rmartz-pr-lifecycle` and `rmartz-pr-gate`. While the role
+The slugs default to `rmartz-pr-lifecycle` and `rmartz-pr-gate`. The registered
+gate App is `rmartz-pr-lifecycle-gate`, so the gate project sets
+`PR_GATE_APP_SLUG` ([`deployment/gate/production.yml`](../deployment/gate/production.yml)).
+While the role
 is missing or unknown, or any of the role's first three variables is missing,
 every delivery gets `500` and nothing runs. Values are never logged.
 
