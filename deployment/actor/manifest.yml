@@ -1,11 +1,14 @@
 environments: [production]
 
+# The actor project, pr-lifecycle-app. Run envctl against it with
+# `--deployment-dir deployment/actor` (see docs/development.md). The pin makes
+# envctl refuse a .vercel link or VERCEL_PROJECT_ID naming another project.
 deployments:
   - provider: vercel
+    projectId: prj_Hk4QmeVi1BYi48RAPpcne95x3Ptv
+    teamId: team_kVIsLOZBHQLTMtnVSltoDb1g
     targets: { production: production }
 
-# The actor project, pr-lifecycle-app. Run envctl against it with
-# `--deployment-dir deployment/actor` (see docs/development.md).
 services:
   # The rmartz-pr-lifecycle App's secrets, managed by
   # `envctl secrets init|rotate github-app --private-key-file <pem>`.
