@@ -19,10 +19,9 @@ tags: [ci, tooling, dependabot, deploy, conventions]
 | Packages | pnpm (version pinned by `packageManager`)                             |
 | Hygiene  | `@rmartz/repo-hygiene` (CI action + pre-commit hook)                  |
 
-Node 24 runs CI and is the runtime the service targets (`engines`). The build is a
-plain `tsc` emit for now; whether the deploy target wants a bundle is part of the
-open hosting decision in
-[rmartz/pr-lifecycle#134](https://github.com/rmartz/pr-lifecycle/issues/134).
+Node 24 runs CI and is the runtime the service targets (`engines`). The `tsc`
+build is CI's compile check. Vercel compiles the function in `api/` itself, along
+with the `src/` modules it imports.
 
 This is a deployed service, not a published package, so it is `private` and every
 dependency is pinned **exactly** (`3.9.10`, no caret): each version change arrives
@@ -64,7 +63,7 @@ lands alone in its own `ci:` PR.
 
 `pr-lifecycle.yml` dogfoods the reconciler through the action until this App can
 serve the repo itself. A repo must never run both, so the switch deletes that
-workflow in the same change that installs the App here.
+workflow in the same change that adds this repo to [`src/repos.ts`](../src/repos.ts).
 
 There is no release workflow and no post-merge commit-convention tripwire: the
 service publishes no package, so nothing consumes a conventional subject on
@@ -72,17 +71,25 @@ service publishes no package, so nothing consumes a conventional subject on
 
 ## Deploy
 
-Deploy automation does not exist yet; it waits on the hosting choice in
-[rmartz/pr-lifecycle#134](https://github.com/rmartz/pr-lifecycle/issues/134).
-When it lands:
+The server is a Vercel project deployed by **Vercel's Git integration**, so there
+is no deploy workflow here:
 
-- It goes in `.github/workflows/deploy.yml`, triggered by push to `main` (and
-  `workflow_dispatch` for a redeploy), never on `pull_request`.
-- The App's private key and webhook secret live in the host's secret store, never
-  in this repository or its Actions logs. `.gitignore` already excludes `.env*`
-  and `*.pem`.
-- Document the workflow, its secrets, and how to roll back here and in the
-  table above.
+- **Production only.** [`vercel.json`](../vercel.json) sets
+  `git.deploymentEnabled` to `main` only, so a push to `main` deploys and branch
+  pushes build no preview. A preview would be useless anyway: the App's webhook
+  points at production. Testing a branch end to end would need a second dev App
+  aimed at a preview URL.
+- **Function limits.** `api/webhook.ts` gets `maxDuration: 300`, room for the
+  30-second settle wait plus fact-gathering. The webhook itself is acknowledged
+  first; see [The webhook server](server.md#a-delivery-step-by-step).
+- **Secrets.** The App's Client ID, private key and webhook secret are Vercel
+  environment variables, set in the **Production** environment only (names in
+  [The webhook server](server.md#environment)). Never commit them, and never put
+  them in Actions logs. `.gitignore` already excludes `.env*` and `*.pem`.
+- **Rollback.** Promote the previous production deployment in Vercel
+  (`vercel rollback`, or Instant Rollback in the dashboard), then revert on
+  `main`. To stop the App acting on a repo immediately, remove it from
+  [`src/repos.ts`](../src/repos.ts), or clear the App's webhook URL.
 
 ## Repo hygiene
 

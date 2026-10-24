@@ -12,6 +12,9 @@ relevant to your task before editing code — see
 - [What pr-lifecycle-app is](overview.md) — the hosted GitHub App that runs the
   pr-lifecycle reconciler from webhooks, how it relates to the library and the
   action, and where its design is still open.
+- [The webhook server](server.md) — how a delivery is verified, mapped to PRs,
+  scoped to one repository's token and reconciled; subscribed events, App
+  permissions, the repo allowlist, environment, and the proof-of-concept limits.
 - [Development and CI](development.md) — the toolchain, commands, each CI
   workflow and what it gates, repo hygiene, Dependabot, and where deploy
   automation will go.

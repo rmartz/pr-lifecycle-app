@@ -47,14 +47,18 @@ merge-authorization bug. The [testing strategy](testing.md) is built around that
 
 ## Status and open design
 
-This repo currently holds only its infrastructure: toolchain, CI, and docs. The
-server itself is not written yet.
+The server runs on **Vercel** as the existing `rmartz-pr-lifecycle` App. It acts
+only on the repos in its allowlist. The proof of concept is
+`rmartz/firebase-nextjs-template`, in **shadow mode**: the template still runs the
+action, and the App logs dry-run plans to compare against it. Once they match, a
+template PR removes its `pr-lifecycle.yml` and the App turns dry-run off. How it
+works: [The webhook server](server.md).
 
 The design is tracked in
-[rmartz/pr-lifecycle#134](https://github.com/rmartz/pr-lifecycle/issues/134). Its
-open questions are **not** decided here: the hosting choice and its time limits,
-the git runner that clean-rebase approval carry-over needs, per-PR serialization,
-missed and duplicate deliveries, self-triggered events, per-repo policy, and
-coexistence with the merge-safety and pr-policy workflows. When a question is
-decided, record the decision on a page in this bundle and link it from
-[the index](index.md).
+[rmartz/pr-lifecycle#134](https://github.com/rmartz/pr-lifecycle/issues/134).
+The proof of concept settled the hosting, the App identity, self-triggered events
+and per-repo policy. It deliberately deferred approval carry-over (which needs
+git), per-PR serialization and a missed-delivery sweep; see
+[its simplifications](server.md#proof-of-concept-simplifications). Coexistence
+with the merge-safety and pr-policy workflows is unchanged: they stay Actions
+workflows. Record each decision on a page in this bundle when it is made.
