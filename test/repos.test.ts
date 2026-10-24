@@ -25,6 +25,22 @@ describe('toolConfig: the reviewed allowlist', () => {
   it('leaves every other repository disabled', () => {
     expect(toolConfig('rmartz/personal-budget', 'prLifecycle')).toBeUndefined();
   });
+
+  it("shadows pr-policy on the proof-of-concept repo with its workflow's inputs", () => {
+    expect(toolConfig('rmartz/firebase-nextjs-template', 'prPolicy')).toEqual({
+      mode: 'shadow',
+      policy: {
+        skipUat: false,
+        requireUatLabel: true,
+        retitleDependabotCi: true,
+        signOffStatusCreators: ['rmartz-pr-lifecycle[bot]'],
+      },
+    });
+  });
+
+  it('leaves pr-policy off on every other repository', () => {
+    expect(toolConfig('rmartz/personal-budget', 'prPolicy')).toBeUndefined();
+  });
 });
 
 describe('toolConfig: modes', () => {

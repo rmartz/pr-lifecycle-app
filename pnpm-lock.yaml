@@ -11,6 +11,9 @@ importers:
       '@rmartz/pr-lifecycle':
         specifier: 11.5.0
         version: 11.5.0
+      '@rmartz/pr-policy':
+        specifier: 1.7.0
+        version: 1.7.0
       '@vercel/functions':
         specifier: 3.10.3
         version: 3.10.3
@@ -190,6 +193,11 @@ packages:
   '@rmartz/pr-lifecycle@11.5.0':
     resolution: {integrity: sha512-3hG1jrMc57Qc0mhLwEV2MssB1m1NfpwBZdHVvC2ymxOGmz7Nf1DvC6d7qA8TPgCvRN/iUA+8BAydPVWlwbi9xA==}
     engines: {node: '>=22.0.0'}
+    hasBin: true
+
+  '@rmartz/pr-policy@1.7.0':
+    resolution: {integrity: sha512-e9R40qaW7+rZGnfT+7lMUCZ0hudEWsyd3RQXlmPirVxbL/LXZUbTS6cCEe/NQE/38w6WreWsZcjOS8bi0fw6Gg==}
+    engines: {node: '>=20.11.0'}
     hasBin: true
 
   '@rmartz/repo-hygiene@16.0.0':
@@ -1922,6 +1930,10 @@ snapshots:
   '@oxc-project/types@0.155.0': {}
 
   '@rmartz/pr-lifecycle@11.5.0':
+    dependencies:
+      yaml: 2.9.1
+
+  '@rmartz/pr-policy@1.7.0':
     dependencies:
       yaml: 2.9.1
 

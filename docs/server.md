@@ -1,7 +1,7 @@
 ---
 type: Reference
 title: The webhook server
-description: How a delivery flows through the server — the actor and gate roles, signature check, event-to-PR mapping, the per-tool repo allowlist and modes, per-repo-scoped installation tokens, background reconciles — plus its subscribed events, App permissions, environment and the proof-of-concept simplifications.
+description: How a delivery flows through the server — the actor and gate roles, the gate's pr-policy route, signature check, event-to-PR mapping, the per-tool repo allowlist and modes, per-repo-scoped installation tokens, background reconciles — plus its subscribed events, App permissions, environment and the proof-of-concept simplifications.
 tags: [architecture, webhooks, security, github-app, config]
 ---
 
@@ -31,10 +31,56 @@ handler, and the actor never runs the gate's. Both verify the signature first
 with their own App's webhook secret, so a delivery signed for one App is
 rejected (`401`) by the other.
 
-No gate tool is routed yet: the gate acknowledges every verified delivery as
-`unsubscribed-event` until the pr-policy and merge-safety routes land.
-
+The gate runs [pr-policy](#the-gate-pr-policy). merge-safety is not routed yet.
 The rest of this page describes the actor unless it says otherwise.
+
+## The gate: pr-policy
+
+The gate runs [`@rmartz/pr-policy`](https://github.com/rmartz/pr-policy) the way
+the repo's `pr-policy.yml` ran `rmartz/pr-policy-action`, so a repo needs no
+workflow for it ([`src/gate-handler.ts`](../src/gate-handler.ts),
+[`src/run-pr-policy.ts`](../src/run-pr-policy.ts)).
+
+**Events** ([`src/gate-events.ts`](../src/gate-events.ts), pure):
+
+| Event          | Actions or context                                        | PRs evaluated                      |
+| -------------- | --------------------------------------------------------- | ---------------------------------- |
+| `pull_request` | opened, synchronize, reopened, edited, labeled, unlabeled | the PR                             |
+| `status`       | context `pr-lifecycle/sign-off` only                      | the open PRs whose head is the SHA |
+
+A `labeled`, `unlabeled` or `edited` event the gate's own bot sent is skipped,
+so its label and retitle writes don't re-trigger it. The actor App's label
+writes do re-evaluate, which is why no `workflow_run` re-trigger is needed. Any
+other status, the gate's own included, is ignored.
+
+**One evaluation** uses a token minted with `GATE_PERMISSIONS` for the event's
+repository, and pr-policy's fetch client:
+
+1. Gather the PR's facts through the library.
+2. If the repo opts in, compute the Dependabot `ci` retitle. Live, apply it with
+   the gate token; shadow, only judge the retitled title.
+3. Evaluate with `selectChecks(policy)`.
+4. Live, apply the label edits pr-policy plans (`CI approval needed`).
+5. Post the verdict (check-run and commit status) and one status per check.
+6. Log the outcome, title and each check's state.
+
+**Settings come from server config only.** `skipUat`, `requireUatLabel`,
+`retitleDependabotCi` and `signOffStatusCreators` are the repo's `prPolicy`
+policy in [`src/repos.ts`](../src/repos.ts), never anything the PR can edit.
+The action got the same guarantee from `pull_request_target` reading its
+inputs from the default branch.
+
+**Shadow vs live.** In `shadow` the gate posts the verdict as
+`pr-policy (app)` and the statuses as `pr-policy (app) / <check>`, and changes
+nothing on the PR. The action keeps posting the real `pr-policy` beside it, and
+the two can be compared on each PR and in the gate's logs. In `live` the gate
+posts `pr-policy` and makes the writes. For the required-check cutover, see
+[Cutting a tool over](#cutting-a-tool-over-on-a-repo).
+
+**Gate App permissions and events.** Checks, commit statuses, pull requests
+and issues write; contents read; metadata read. It subscribes to `pull_request`
+and `status`, and to `push`, `check_run`, `check_suite` and `workflow_run` (the
+last needs Actions read) for merge-safety.
 
 ## A delivery, step by step
 
@@ -95,8 +141,10 @@ never holds more than its tool needs.
   workflows **write**; checks **read**.
 - **Gate tools** (`GATE_PERMISSIONS`) get at most checks and statuses
   **write**, pull requests and issues **write** (the labels they own), and
-  contents **read**. Nothing merge-capable. The App must already have each of these. Subscribing to `workflow_run`
-  also needs **Actions: read** on the App.
+  contents **read**. Nothing merge-capable.
+
+Each App must already have every permission its tokens ask for. Subscribing to
+`workflow_run` also needs **Actions: read** on the App.
 
 Because the App token is a real actor, it serves both the reads and the release
 writes (the sign-off status, and arming once a repo turns it on). No
@@ -175,9 +223,10 @@ A tool left out of a repo's entry is `off`. Only `shadow` and `live` reach a
 run: the lookup returns nothing for `off`, so a delivery for that repo is
 acknowledged as `repo-not-enabled`. Each tool cuts over per repo on its own.
 
-| Repo                              | Tool         | Mode   | Policy                |
-| --------------------------------- | ------------ | ------ | --------------------- |
-| `rmartz/firebase-nextjs-template` | pr-lifecycle | `live` | `uat: on`, arming off |
+| Repo                              | Tool         | Mode     | Policy                                                |
+| --------------------------------- | ------------ | -------- | ----------------------------------------------------- |
+| `rmartz/firebase-nextjs-template` | pr-lifecycle | `live`   | `uat: on`, arming off                                 |
+| `rmartz/firebase-nextjs-template` | pr-policy    | `shadow` | UAT gate on, `requireUatLabel`, `retitleDependabotCi` |
 
 ### Cutting a tool over on a repo
 
@@ -190,10 +239,24 @@ acknowledged as `repo-not-enabled`. Each tool cuts over per repo on its own.
    plan, so the overlap is harmless.
 
 **A required-check poster** (pr-policy, merge-safety) can't overlap that way:
-two creators posting one context overwrite each other. So it shadows under a
-distinct context (`<name> (app)`), and once the verdicts match, the rest
-happens in one sitting: switch to the real context name, flip the ruleset's
-required check to the gate App's `integration_id`, and delete the workflow.
+two creators posting one context overwrite each other. So it takes these steps:
+
+1. **Shadow.** Add the tool with `mode: 'shadow'`. The gate posts under
+   `<name> (app)`, never the real name. Compare its verdicts with the action's
+   on real PRs until they match.
+2. **Cut over, in one sitting:**
+   1. Merge the PR here that sets `mode: 'live'`. Once it deploys, the gate
+      posts the real `<name>`.
+   2. Flip the repo ruleset's required `<name>` check from GitHub Actions
+      (`integration_id` 15368) to the gate App's ID. Only the gate's key can
+      satisfy it from then on, which closes the gap where any workflow with
+      `statuses: write` could post a green check. A person approves this
+      settings change.
+   3. Merge the repo PR deleting the action's workflow. It needs
+      `CI change approved`.
+
+   Between steps 2.1 and 2.3, both post `<name>` with the same verdict, so
+   keep that window short.
 
 Never leave a tool `live` on a repo that still runs its action.
 

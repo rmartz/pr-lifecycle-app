@@ -1,41 +1,133 @@
 import { describe, expect, it } from 'vitest';
-import type { GateHandlerDeps } from '../src/gate-handler.js';
 import { handleGateWebhook } from '../src/gate-handler.js';
 import type { WebhookRequest } from '../src/handler.js';
-import { makeLogger, makePullRequestEvent, SECRET, sign } from './fixtures.js';
+import type { Payload } from '../src/payload.js';
+import { makePullRequestEvent, makeRepository, sign } from './fixtures.js';
+import { GATE_BOT, makeGateDeps, makeStatusEvent, SHADOW_CONFIG } from './gate-fixtures.js';
 
-function makeGateDeps(): GateHandlerDeps {
-  return { webhookSecret: SECRET, botLogin: 'rmartz-pr-gate[bot]', log: makeLogger() };
-}
-
-function makeRequest(body: string, signature: string | null): WebhookRequest {
+function makeRequest(
+  payload: Payload,
+  overrides: { event?: string; signature?: string | null; body?: string } = {},
+): WebhookRequest {
+  const body = overrides.body ?? JSON.stringify(payload);
   const headers: Record<string, string | null> = {
-    'x-github-event': 'pull_request',
+    'x-github-event': overrides.event ?? 'pull_request',
     'x-github-delivery': 'delivery-9',
-    'x-hub-signature-256': signature,
+    'x-hub-signature-256': overrides.signature === undefined ? sign(body) : overrides.signature,
   };
   return { header: (name) => headers[name] ?? null, body };
 }
 
-describe('handleGateWebhook', () => {
+describe('handleGateWebhook: signature', () => {
   it('rejects a mis-signed delivery with 401', () => {
     const body = JSON.stringify(makePullRequestEvent());
-    const response = handleGateWebhook(makeRequest(body, sign(body, 'forged')), makeGateDeps());
+    const response = handleGateWebhook(
+      makeRequest({}, { body, signature: sign(body, 'forged') }),
+      makeGateDeps(),
+    );
     expect(response.status).toBe(401);
   });
 
-  it('rejects a signed body that is not a payload with 400', () => {
-    const response = handleGateWebhook(makeRequest('[1]', sign('[1]')), makeGateDeps());
-    expect(response.status).toBe(400);
+  it('does no work for a mis-signed delivery', () => {
+    const deps = makeGateDeps();
+    const body = JSON.stringify(makePullRequestEvent());
+    const response = handleGateWebhook(
+      makeRequest({}, { body, signature: sign(body, 'forged') }),
+      deps,
+    );
+    expect([response.background, deps.minted]).toEqual([undefined, []]);
   });
 
-  it('acknowledges a verified delivery without work while no gate tool is routed', () => {
-    const body = JSON.stringify(makePullRequestEvent());
-    const response = handleGateWebhook(makeRequest(body, sign(body)), makeGateDeps());
+  it('rejects a signed body that is not a payload with 400', () => {
+    const response = handleGateWebhook(makeRequest({}, { body: '[1]' }), makeGateDeps());
+    expect(response.status).toBe(400);
+  });
+});
+
+describe('handleGateWebhook: accepted', () => {
+  it('accepts a PR event for an enabled repo with 202', () => {
+    const response = handleGateWebhook(makeRequest(makePullRequestEvent()), makeGateDeps());
+    expect([response.status, response.body]).toEqual([202, { accepted: true }]);
+  });
+
+  it('evaluates in the background, after the response', async () => {
+    const deps = makeGateDeps();
+    const response = handleGateWebhook(makeRequest(makePullRequestEvent()), deps);
+    expect(deps.calls).toEqual([]);
+    await response.background;
+    expect(deps.calls.map(({ op }) => op)).toContain('postVerdict');
+  });
+
+  it('evaluates the PRs at a sign-off status', async () => {
+    const deps = makeGateDeps({ openPrs: [60] });
+    await handleGateWebhook(makeRequest(makeStatusEvent(), { event: 'status' }), deps).background;
+    expect(deps.calls.find(({ op }) => op === 'gatherFacts')?.args).toEqual([
+      'rmartz/firebase-nextjs-template',
+      60,
+    ]);
+  });
+
+  it("uses the repo's pr-policy mode for the verdict name", async () => {
+    const deps = makeGateDeps({ config: { ...SHADOW_CONFIG, mode: 'live' } });
+    await handleGateWebhook(makeRequest(makePullRequestEvent()), deps).background;
+    expect(deps.calls.find(({ op }) => op === 'postVerdict')?.args[3]).toBe('pr-policy');
+  });
+});
+
+describe('handleGateWebhook: ignored', () => {
+  it('acknowledges a repo where pr-policy is not enabled, with no work', () => {
+    const deps = makeGateDeps();
+    const event = makePullRequestEvent({
+      repository: makeRepository({ full_name: 'rmartz/personal-budget', name: 'personal-budget' }),
+    });
+    const response = handleGateWebhook(makeRequest(event), deps);
     expect([response.status, response.body, response.background]).toEqual([
       200,
-      { ignored: 'unsubscribed-event' },
+      { ignored: 'repo-not-enabled' },
       undefined,
+    ]);
+  });
+
+  it('acknowledges a repo whose pr-policy mode is off, with no work', () => {
+    const response = handleGateWebhook(
+      makeRequest(makePullRequestEvent()),
+      makeGateDeps({ config: undefined }),
+    );
+    expect(response.body).toEqual({ ignored: 'repo-not-enabled' });
+  });
+
+  it("acknowledges the gate's own label write without evaluating", () => {
+    const event = makePullRequestEvent({ action: 'labeled', sender: { login: GATE_BOT } });
+    const response = handleGateWebhook(makeRequest(event), makeGateDeps());
+    expect(response.body).toEqual({ ignored: 'self-triggered' });
+  });
+
+  it("acknowledges the gate's own status without evaluating", () => {
+    const event = makeStatusEvent({ context: 'pr-policy (app)' });
+    const response = handleGateWebhook(makeRequest(event, { event: 'status' }), makeGateDeps());
+    expect(response.body).toEqual({ ignored: 'unhandled-action' });
+  });
+
+  it('ignores a repo whose config disappears between decide and run', () => {
+    let calls = 0;
+    const deps = makeGateDeps({
+      overrides: { prPolicyConfig: () => (calls++ === 0 ? SHADOW_CONFIG : undefined) },
+    });
+    const response = handleGateWebhook(makeRequest(makePullRequestEvent()), deps);
+    expect(response.body).toEqual({ ignored: 'repo-not-enabled' });
+  });
+});
+
+describe('handleGateWebhook: replay', () => {
+  it('evaluates a duplicate delivery the same way, so the verdict converges', async () => {
+    const deps = makeGateDeps();
+    const request = makeRequest(makePullRequestEvent());
+    await handleGateWebhook(request, deps).background;
+    await handleGateWebhook(request, deps).background;
+    const verdicts = deps.calls.filter(({ op }) => op === 'postVerdict').map(({ args }) => args);
+    expect(verdicts).toEqual([
+      [31, 'head1', 'failure', 'pr-policy (app)'],
+      [31, 'head1', 'failure', 'pr-policy (app)'],
     ]);
   });
 });
