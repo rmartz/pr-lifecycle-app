@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  // Build-only config: the server source alone, emitted as ESM to dist/. The
+  // deploy target (and whether it bundles) is still open (rmartz/pr-lifecycle#134);
+  // revisit this once it is chosen. Type-checking uses tsconfig.json.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "sourceMap": true,
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  "include": ["src/**/*.ts"]
+}

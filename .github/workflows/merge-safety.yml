@@ -1,0 +1,62 @@
+name: merge-safety
+
+# Thin caller of the rmartz/merge-safety-action composite Action. It posts the
+# `merge-safety` check-run carrying the base-currency / breaking-change / conflict
+# verdict and re-holds open PRs when main moves, so a PR auto-merges only once it
+# is genuinely safe against the current base. The `@<sha>` pin is bumped by
+# Dependabot. See https://github.com/rmartz/merge-safety-action/blob/main/docs/consuming.md.
+#
+# `pull_request_target` (not `pull_request`): GitHub cannot build the synthetic
+# merge commit for an unmergeable PR, so a `pull_request` run never fires on a
+# conflicting PR — exactly when the verdict matters most. It is safe here because
+# the action fetches the PR head as git data only and never executes PR code.
+# `check_suite: [completed]` re-holds PRs when main's own CI flips red/green.
+#
+# THE CHECK-RUN NAME `merge-safety` IS A FLEET CONTRACT — it is required on the
+# default branch and the auto-merge gate keys off it; never rename it here.
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, edited, labeled, unlabeled]
+  push:
+    branches: [main]
+  check_suite:
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: PR number to evaluate
+        required: true
+
+permissions:
+  checks: write # post/flip the merge-safety check-run
+  statuses: write # mirror the verdict to the merge-safety commit status
+  pull-requests: write # reconcile update-required / merge-conflict labels
+  contents: read
+  actions: write # re-dispatch this workflow per open PR when the base moves
+
+jobs:
+  merge-safety:
+    # Skip, without a runner, the events the action would no-op on: another app's
+    # check suite, a non-default branch's suite, a tag push, a branch deletion.
+    if: >-
+      (github.event_name != 'push' && github.event_name != 'check_suite') ||
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/') && !github.event.deleted) ||
+      (github.event_name == 'check_suite' &&
+       github.event.check_suite.app.slug == 'github-actions' &&
+       github.event.check_suite.head_branch == github.event.repository.default_branch)
+    # Base-moved fan-outs serialize per branch and are never cancelled; each per-PR
+    # evaluate run gets its own group (run_id), so a burst of PR events never
+    # queues or cancels a run.
+    concurrency:
+      group: >-
+        ${{ (github.event_name == 'push' || github.event_name == 'check_suite')
+        && format('merge-safety-invalidate-{0}', github.event_name == 'push' && github.ref_name || github.event.check_suite.head_branch)
+        || format('merge-safety-evaluate-{0}', github.run_id) }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: rmartz/merge-safety-action@70eec3a121be369251e0acf42469452b68e452fa # v0.1.2
+        with:
+          pr: ${{ inputs.pr }}

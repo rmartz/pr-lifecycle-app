@@ -1,0 +1,3 @@
+# Repo-hygiene gates over staged content: the same checks the Repo Hygiene
+# workflow runs, caught before the commit exists.
+pnpm run hygiene:staged

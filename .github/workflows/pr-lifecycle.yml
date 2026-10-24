@@ -1,0 +1,102 @@
+name: pr-lifecycle
+# Shows which event and action started each run (e.g. pull_request_target /
+# review_request_removed), so the run list says what re-reconciled a PR.
+run-name: pr-lifecycle (${{ github.event_name }}${{ github.event.action && format('/{0}', github.event.action) || '' }})
+
+# Runs the pr-lifecycle reconciler on this repo through the published, SHA-pinned
+# rmartz/pr-lifecycle-action, the same path other consumers use. On every relevant
+# event it recomputes each PR's lifecycle state, converges its labels, and arms
+# GitHub-native auto-merge when the PR reaches `approved` (including an eligible
+# Dependabot PR).
+#
+# This repo will move to its own hosted App once it serves webhooks. A repo must
+# never run both the action and the App, so the move deletes this workflow in the
+# same change that installs the App here (rmartz/pr-lifecycle#134).
+#
+# SAFETY: auto-merge lands the moment the default-branch ruleset's required
+# checks pass (CI, hygiene, pr-policy, merge-safety). This is only safe while
+# those checks are REQUIRED on main.
+#
+# Reads and label writes use the workflow's GITHUB_TOKEN. The action creates a
+# real-actor token from the rmartz-pr-lifecycle App (the PR_LIFECYCLE_CLIENT_ID /
+# PR_LIFECYCLE_PRIVATE_KEY secrets) for the writes that need one; until those
+# secrets are set, it reconciles labels only.
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - reopened
+      - ready_for_review
+      - converted_to_draft
+      - synchronize
+      - edited
+      - labeled
+      - unlabeled
+      # A bot review request that lands (or is removed) after the run's settle
+      # wait moves the PR into (or out of) awaiting-bot-review.
+      - review_requested
+      - review_request_removed
+  pull_request_review:
+    types: [submitted, dismissed, edited]
+  # CI completion re-routes a PR through the CI gate. check_suite never fires for
+  # suites GitHub Actions creates, so workflow_run lists this repo's required
+  # Actions workflows. That includes pr-policy: the CI gate ignores a hold
+  # check's pending but counts its failure, so its failing-to-passing transition
+  # needs a re-reconcile to clear `ci failing`. merge-safety needs no entry: the
+  # CI gate ignores it and its `update required` label fires `labeled`.
+  check_suite:
+    types: [completed]
+  workflow_run:
+    workflows: [CI, Repo Hygiene, pr-policy]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: PR number to reconcile
+        required: true
+
+permissions:
+  pull-requests: write # labels, review requests, advisory comment, disarming
+  contents: read # branch rules, base head, commits for approval carry-over
+  checks: read # the CI gate
+  statuses: read # the CI gate
+  actions: write # report a transient failure as a cancelled run
+
+jobs:
+  reconcile:
+    name: Reconcile PR lifecycle
+    # A review on a fork PR runs with a read-only token, so it can't write
+    # labels; skip it. The fork PR is reconciled on its next
+    # pull_request_target event, or on demand via workflow_dispatch.
+    if: >-
+      github.event_name != 'pull_request_review' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # One run per PR at a time; a newer event supersedes an in-flight one, since
+    # every run recomputes from current facts. CI-completion events are keyed by
+    # head SHA, as the PR number is only known inside the action.
+    concurrency:
+      group: >-
+        pr-lifecycle-${{ github.event.pull_request.number || inputs.pr ||
+        github.event.workflow_run.head_sha || github.event.check_suite.head_sha }}
+      cancel-in-progress: true
+    steps:
+      # The action resolves the PR from the event, including a dispatch's `pr`.
+      - uses: rmartz/pr-lifecycle-action@fb992db535de49efcbd9c7b4ba01428b3c134fbf # v4.4.2
+        with:
+          # The action creates its real-actor token from the rmartz-pr-lifecycle
+          # App: it arms, merges, updates, and posts the pr-lifecycle/sign-off
+          # status. Both are Actions and Dependabot secrets; until they are set,
+          # the run reconciles labels only.
+          app-client-id: ${{ secrets.PR_LIFECYCLE_CLIENT_ID }}
+          app-private-key: ${{ secrets.PR_LIFECYCLE_PRIVATE_KEY }}
+          # Nothing here to user-test (see pr-policy.yml's skip-uat): every PR is
+          # `no UAT needed`. Quoted: YAML 1.1 reads a bare off as false.
+          uat: 'off'
+          arm-auto-merge: true
+          # Bring an approved PR current when merge-safety flags `update
+          # required` (never a Dependabot PR: a person or Dependabot itself
+          # rebases it).
+          auto-update: true

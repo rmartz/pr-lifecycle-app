@@ -1,0 +1,20 @@
+# @rmartz/repo-hygiene check configuration for this repo.
+# Every check runs: the Repo Hygiene workflow omits the action's `checks` input
+# (so a new default-on check auto-joins on the next Dependabot bump), and the
+# pre-commit hook and `pnpm run hygiene` run the CLI with no check list. Each
+# check enforces at its shipped severity; this file sets options, never
+# `severity`. docs/ is an OKF bundle (see docs/okf-format.md).
+checks:
+  # OKF docs-frontmatter conformance. This repo documents code, so it uses the
+  # curated type vocabulary.
+  okf:
+    types: [Skill, Script, Library, Design, Reference]
+    # Exception: Reference pages (overview, development, testing) are concept
+    # guides with no single source file to bind as a `resource`.
+    resourceExemptTypes: [Design, Reference]
+  # Exception: tighten src/ to match the eslint max-lines cap (split at ~240).
+  file-caps:
+    overrides:
+      - glob: 'src/**/*.ts'
+        lines: { warn: 240, error: 400 }
+        bytes: { warn: 16KB, error: 24KB }

@@ -1,0 +1,54 @@
+{
+  "name": "@rmartz/pr-lifecycle-app",
+  "version": "0.0.0-development",
+  "private": true,
+  "description": "Hosted GitHub App that runs the @rmartz/pr-lifecycle reconciler from webhooks, so adopting pr-lifecycle in a repo is install-only.",
+  "homepage": "https://github.com/rmartz/pr-lifecycle-app#readme",
+  "bugs": {
+    "url": "https://github.com/rmartz/pr-lifecycle-app/issues"
+  },
+  "license": "MIT",
+  "type": "module",
+  "packageManager": "pnpm@10.30.3",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rmartz/pr-lifecycle-app.git"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint --max-warnings 0 .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest",
+    "hygiene": "repo-hygiene --check --config .repo-hygiene.yml",
+    "hygiene:staged": "repo-hygiene --staged --config .repo-hygiene.yml",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@rmartz/repo-hygiene": "16.0.0",
+    "@types/node": "24.19.2",
+    "@vitest/coverage-v8": "5.0.5",
+    "eslint": "10.13.0",
+    "eslint-import-resolver-typescript": "4.4.5",
+    "eslint-plugin-import": "2.32.0",
+    "globals": "17.13.0",
+    "husky": "9.1.7",
+    "prettier": "3.9.10",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.72.0",
+    "vitest": "5.0.5"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "unrs-resolver"
+    ]
+  }
+}

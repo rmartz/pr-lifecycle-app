@@ -1,0 +1,93 @@
+version: 2
+
+# Every dependency, @rmartz/* included, comes from npmjs, so there is no
+# `registries:` block and no DEPENDABOT_PACKAGES_TOKEN. The repo-root .npmrc pins
+# npmjs as the registry for the @rmartz scope too.
+#
+# Cooldown: since 2026-07-14 Dependabot waits 3 days after a release before
+# proposing it, even with no `cooldown` configured. Third-party dependencies keep
+# that default (security updates are never delayed by it).
+# - github-actions exempts first-party `rmartz/*` actions and reusable workflows:
+#   they're published from our own repos, so the wait only holds fixes back.
+# - npm declares NO `cooldown` block. An explicit npm cooldown is passed to pnpm
+#   as `minimumReleaseAge`, which hard-fails lockfile resolution
+#   (ERR_PNPM_NO_MATURE_MATCHING_VERSION) whenever any transitive dependency is
+#   younger than the window, so grouped updates close as "no longer updatable".
+#   The implicit default isn't forwarded to pnpm.
+#
+# Auto-merge: pr-lifecycle's bot eligibility arms only patch and minor bumps and
+# holds a `version-update:semver-major` for review, judging a grouped PR by its
+# highest update type.
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      # Production deps ship in the deployed service → `fix`.
+      # Dev deps never reach the deployed artifact → `chore`.
+      prefix: fix
+      prefix-development: chore
+      include: scope
+    groups:
+      # CI-sensitive tools, always isolated: pr-policy's title check blocks any
+      # eslint or prettier change unless the title type is `ci`, so they share one
+      # PR (retitled by pr-policy's retitle-dependabot-ci) instead of blocking a
+      # catch-all. Each tool's lockstep family rides along. No update-types filter,
+      # so majors stay in this group too.
+      ci:
+        patterns:
+          - 'prettier'
+          - 'prettier-plugin-*'
+          - 'eslint'
+          - 'eslint-*'
+          - '@eslint/*'
+          - 'typescript-eslint'
+          - '@typescript-eslint/*'
+      # TypeScript isolated: a compiler bump can change type-checking across the
+      # whole codebase, and typescript-eslint pins a supported TS range, so it
+      # warrants its own reviewable PR.
+      typescript:
+        patterns:
+          - 'typescript'
+      # Catch-all groups batch patch and minor bumps, which auto-merge. A major
+      # matches no group, so Dependabot opens it as its own PR for review instead
+      # of holding every routine bump in the group.
+      dev-dependencies:
+        dependency-type: development
+        patterns:
+          - '*'
+        update-types:
+          - minor
+          - patch
+      production-dependencies:
+        dependency-type: production
+        patterns:
+          - '*'
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      # Explicit, so declaring the block can't change the third-party default.
+      default-days: 3
+      exclude:
+        - 'rmartz/*'
+    commit-message:
+      # CI tooling never reaches the deployed artifact → always `chore`.
+      # (prefix-development has no meaning for GHA; without this override a GHA
+      # bump would fall through to `fix`.)
+      prefix: chore
+      include: scope
+    groups:
+      # Patch and minor only; each major gets its own PR (see the npm groups).
+      github-actions:
+        patterns:
+          - '*'
+        update-types:
+          - minor
+          - patch

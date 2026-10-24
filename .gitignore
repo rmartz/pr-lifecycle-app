@@ -1,0 +1,15 @@
+# >>> ai-tools managed (ensure-project-config) >>>
+node_modules/
+dist/
+.turbo/
+*.tsbuildinfo
+coverage/
+.DS_Store
+# <<< ai-tools managed (ensure-project-config) <<<
+
+# Per-developer Claude Code permissions (symlinked into each worktree).
+.claude/settings.local.json
+# Local environment (App private key, webhook secret). Never commit secrets.
+.env
+.env.*
+*.pem
