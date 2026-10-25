@@ -20,6 +20,8 @@ export interface GateHandlerDeps extends PrPolicyDeps, MergeSafetyDeps {
   readonly prPolicyConfig: (fullName: string) => PrPolicyConfig | undefined;
   /** merge-safety's settings for a repo, or undefined when it is unlisted or `off`. */
   readonly mergeSafetyConfig: (fullName: string) => MergeSafetyConfig | undefined;
+  /** How many GitHub requests this delivery has made so far. */
+  readonly apiCalls: () => number;
 }
 
 /** What one tool made of a delivery: the work it started, or why it ignored it. */
@@ -88,8 +90,18 @@ function mergeSafetyOutcome(
   }
 }
 
-async function settle(work: readonly Promise<void>[]): Promise<void> {
+/** Waits for a delivery's work, then logs what it cost: its API calls and the budget left. */
+async function settle(
+  work: readonly Promise<void>[],
+  fields: LogFields,
+  deps: GateHandlerDeps,
+): Promise<void> {
   await Promise.all(work);
+  deps.log.info('delivery done', {
+    ...fields,
+    apiCalls: deps.apiCalls(),
+    rateLimitRemaining: deps.rateLimitRemaining() ?? null,
+  });
 }
 
 function summary(outcome: ToolOutcome): string {
@@ -120,5 +132,5 @@ export function handleGateWebhook(request: WebhookRequest, deps: GateHandlerDeps
   }
   const fields: LogFields = { delivery: deliveryId, event: eventName, ...body };
   deps.log.info('accepted', fields);
-  return { status: 202, body, background: settle(work) };
+  return { status: 202, body, background: settle(work, fields, deps) };
 }

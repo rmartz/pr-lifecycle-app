@@ -1,7 +1,7 @@
 ---
 type: Reference
 title: The webhook server
-description: How a delivery flows through the server — the actor and gate roles, the gate's pr-policy and merge-safety routes, signature check, event-to-PR mapping, the per-tool repo allowlist and modes, per-repo-scoped installation tokens, background reconciles — plus its subscribed events, App permissions, environment and the proof-of-concept simplifications.
+description: How a delivery flows through the server — the actor and gate roles, signature check, event-to-PR mapping, the per-tool repo allowlist and modes, per-repo-scoped installation tokens, background reconciles — plus its subscribed events, App permissions, environment and the proof-of-concept simplifications.
 tags: [architecture, webhooks, security, github-app, config]
 ---
 
@@ -31,121 +31,9 @@ handler, and the actor never runs the gate's. Both verify the signature first
 with their own App's webhook secret, so a delivery signed for one App is
 rejected (`401`) by the other.
 
-The gate runs [pr-policy](#the-gate-pr-policy) and
-[merge-safety](#the-gate-merge-safety). Each tool decides on its own whether a
-delivery concerns it. The gate responds `202` when either accepts, and its body
-says what each made of it (`{ prPolicy, mergeSafety }`).
+The gate runs pr-policy and merge-safety, with their own events, shadow modes
+and API budget: see [The gate role](gate.md).
 The rest of this page describes the actor unless it says otherwise.
-
-## The gate: pr-policy
-
-The gate runs [`@rmartz/pr-policy`](https://github.com/rmartz/pr-policy) the way
-the repo's `pr-policy.yml` ran `rmartz/pr-policy-action`, so a repo needs no
-workflow for it ([`src/gate-handler.ts`](../src/gate-handler.ts),
-[`src/run-pr-policy.ts`](../src/run-pr-policy.ts)).
-
-**Events** ([`src/gate-events.ts`](../src/gate-events.ts), pure):
-
-| Event          | Actions or context                                        | PRs evaluated                                                                 |
-| -------------- | --------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| `pull_request` | opened, synchronize, reopened, edited, labeled, unlabeled | the PR                                                                        |
-| `status`       | context `pr-lifecycle/sign-off` only                      | the open PRs whose head is the SHA                                            |
-| `check_run`    | `rerequested` on `pr-policy` or `pr-policy (app)`         | its PRs: the native **Re-run** button, which replaces re-running the workflow |
-
-A `labeled`, `unlabeled` or `edited` event the gate's own bot sent is skipped,
-so its label and retitle writes don't re-trigger it. The actor App's label
-writes do re-evaluate, which is why no `workflow_run` re-trigger is needed. Any
-other status, the gate's own included, is ignored.
-
-**One evaluation** uses a token minted with `GATE_PERMISSIONS` for the event's
-repository, and pr-policy's fetch client:
-
-1. Gather the PR's facts through the library.
-2. If the repo opts in, compute the Dependabot `ci` retitle. Live, apply it with
-   the gate token; shadow, only judge the retitled title.
-3. Evaluate with `selectChecks(policy)`.
-4. Live, apply the label edits pr-policy plans (`CI approval needed`).
-5. Post the verdict (check-run and commit status) and one status per check.
-6. Log the outcome, title and each check's state.
-
-**Settings come from server config only.** `skipUat`, `requireUatLabel`,
-`retitleDependabotCi` and `signOffStatusCreators` are the repo's `prPolicy`
-policy in [`src/repos.ts`](../src/repos.ts), never anything the PR can edit.
-The action got the same guarantee from `pull_request_target` reading its
-inputs from the default branch.
-
-**Shadow vs live.** In `shadow` the gate posts the verdict as
-`pr-policy (app)` and the statuses as `pr-policy (app) / <check>`, and changes
-nothing on the PR. The action keeps posting the real `pr-policy` beside it, and
-the two can be compared on each PR and in the gate's logs. In `live` the gate
-posts `pr-policy` and makes the writes. For the required-check cutover, see
-[Cutting a tool over](#cutting-a-tool-over-on-a-repo).
-
-**Gate App permissions and events.** Checks, commit statuses, pull requests
-and issues write; contents read; metadata read. It subscribes to `pull_request`
-and `status`, and to `push`, `check_run`, `check_suite` and `workflow_run` (the
-last needs Actions read) for merge-safety.
-
-## The gate: merge-safety
-
-The gate runs [`@rmartz/merge-safety`](https://github.com/rmartz/merge-safety)
-in-process, so a repo needs no `merge-safety.yml`
-([`src/run-merge-safety.ts`](../src/run-merge-safety.ts),
-[`src/merge-safety-evaluate.ts`](../src/merge-safety-evaluate.ts)). The library's
-**API-backed fact source** (`makeApiGitRunner`) answers its git queries from
-the REST compare and commit APIs, so no checkout is needed. It fails closed past
-the compare API's caps and reports `Could not evaluate`. The glue the CLI does
-with `gh` lives in [`src/merge-safety-io.ts`](../src/merge-safety-io.ts): read
-the PR, probe the base's checks and required contexts, post the check, list
-open PRs.
-
-**Events** ([`src/merge-safety-events.ts`](../src/merge-safety-events.ts), pure):
-
-| Event          | When                                                      | Does                                                    |
-| -------------- | --------------------------------------------------------- | ------------------------------------------------------- |
-| `pull_request` | opened, synchronize, reopened, edited, labeled, unlabeled | evaluates the PR                                        |
-| `push`         | to a branch (not a tag, not a deletion)                   | invalidates the open PRs based on that branch           |
-| `workflow_run` | completed, on the default branch, started by a `push`     | invalidates the default branch's open PRs (base health) |
-| `check_run`    | `rerequested` on `merge-safety` or `merge-safety (app)`   | re-evaluates its PRs: the native **Re-run** button      |
-
-The gate's own `labeled`/`unlabeled`/`edited` events are skipped.
-
-**Only a push-started run is the base's CI.** A workflow started by any other
-event also reports the default branch as its head branch. That includes the
-`status`-triggered `pr-policy.yml`, which runs on every commit status. Following
-those runs loops: each invalidation posts pending statuses, which start
-`status` workflows, whose completions would invalidate again. On the template
-that multiplied the deliveries until the gate's installation ran out of rate
-limit. A base CI run also fans out only while its commit is still the branch
-tip, so a stale or redelivered run costs one read.
-
-**Evaluate.** Read the PR, re-reading while GitHub computes `mergeable`, and
-skip it unless it is open. Gather the facts and take the library's verdict, or
-its fail-safe `Could not evaluate`. Post the check-run, completing any open run
-of the name in place, mirrored to a commit status. Live, also reconcile
-`update required` / `merge conflict`.
-
-**Invalidate** replaces the workflow's per-PR `workflow_dispatch` fan-out:
-
-1. List the open PRs on the moved branch. If the installation is already below
-   the rate-limit floor, stop here and mark nothing.
-2. Mark every one pending (`Re-evaluating`) first, which holds its merge.
-3. Re-evaluate them in place, at most `concurrency` at a time (the repo's
-   `mergeSafety` policy, 4 on the template).
-
-A base push with about 20 open PRs is then a few rounds of a few seconds each,
-well inside the function's 300 s. Each response's `x-ratelimit-remaining` is
-recorded ([`src/rate-limit.ts`](../src/rate-limit.ts)) and logged. Below
-`RATE_LIMIT_FLOOR` (500) the fan-out stops: the PRs it didn't reach keep their
-pending mark, so they stay held until the next base event or a Re-run.
-
-A failed read is logged with the last failed response's status and API path
-(`failure`, never a token or query), so a rate limit (403/429) can be told apart
-from a missing permission or installation (403/404).
-
-**Shadow vs live.** Shadow posts `merge-safety (app)` and writes no labels;
-live posts `merge-safety` and reconciles them. The cutover is the same as
-pr-policy's ([Cutting a tool over](#cutting-a-tool-over-on-a-repo)).
 
 ## A delivery, step by step
 

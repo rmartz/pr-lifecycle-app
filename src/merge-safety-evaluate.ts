@@ -11,6 +11,8 @@ import type { MintToken } from './installation-token.js';
 import type { LogFields, Logger } from './logger.js';
 import { baseChecksProbe, postCheck, readPr, requiredChecksProbe } from './merge-safety-io.js';
 import type { RequestFailure } from './rate-limit.js';
+import { isStarved } from './rate-limit.js';
+import { baseKey } from './merge-safety-dedupe.js';
 import type { ActiveToolConfig, MergeSafetyPolicy } from './repos.js';
 
 /**
@@ -59,12 +61,36 @@ export interface Run {
   readonly deps: MergeSafetyDeps;
 }
 
-/** Evaluates one PR and posts its check. Never throws. */
-export async function evaluateOne(run: Run, pr: number): Promise<void> {
+/** Whether the run's client is out of budget (./rate-limit.ts). */
+export function starved(deps: MergeSafetyDeps): boolean {
+  return isStarved(deps.rateLimitRemaining(), deps.lastFailure());
+}
+
+/**
+ * Evaluates one PR and posts its check, stamped with the base key it was
+ * computed against (`key`, or computed here). Out of budget, it posts nothing:
+ * a verdict from rate-limited reads would be a false `Could not evaluate`,
+ * which once live is a red required check. Never throws.
+ */
+export async function evaluateOne(run: Run, pr: number, key?: string): Promise<void> {
   const { client, repo, config, deps } = run;
   const context = { ...run.context, pr };
+  const skip = (message: string) =>
+    deps.log.warn(message, {
+      ...context,
+      rateLimitRemaining: deps.rateLimitRemaining() ?? null,
+      failure: deps.lastFailure() ?? null,
+    });
   try {
+    if (starved(deps)) {
+      skip('skipped an evaluation: the installation is out of API budget');
+      return;
+    }
     const view = await readPr(client, repo, pr, deps.sleep);
+    if (view === undefined && starved(deps)) {
+      skip('skipped an evaluation: the installation is out of API budget');
+      return;
+    }
     if (view === undefined) {
       deps.log.error('could not read the pull request', {
         ...context,
@@ -76,7 +102,12 @@ export async function evaluateOne(run: Run, pr: number): Promise<void> {
       deps.log.info('skipped a pull request that is not open', { ...context, state: view.state });
       return;
     }
-    const decision = await decide(run, view.meta, view.baseBranch);
+    const { decision, gathered } = await decide(run, view.meta, view.baseBranch);
+    if (!gathered && starved(deps)) {
+      skip('skipped a verdict the rate limit cut short; nothing posted');
+      return;
+    }
+    const externalId = key ?? (await baseKey(client, repo, view.baseBranch));
     const name = mergeSafetyName(config);
     const detail = decision.reasons.length
       ? decision.reasons.map((reason) => `- ${reason}`).join('\n')
@@ -90,6 +121,7 @@ export async function evaluateOne(run: Run, pr: number): Promise<void> {
         conclusion: decision.conclusion,
         title: decision.title,
         summary: `${decision.summary}\n\n${detail}`,
+        ...(externalId === undefined ? {} : { externalId }),
       },
       deps.now(),
     );
@@ -119,12 +151,15 @@ export async function evaluateOne(run: Run, pr: number): Promise<void> {
   }
 }
 
-/** The library's verdict, or its fail-safe `Could not evaluate` when facts can't be gathered. */
+/**
+ * The library's verdict, or its fail-safe `Could not evaluate` when facts can't
+ * be gathered (`gathered: false`, so a caller can tell a starved read apart).
+ */
 async function decide(
   run: Run,
   meta: Parameters<typeof gatherMergeSafetyFacts>[0],
   baseBranch: string,
-): Promise<MergeSafetyDecision> {
+): Promise<{ decision: MergeSafetyDecision; gathered: boolean }> {
   try {
     const facts = await gatherMergeSafetyFacts(meta, {
       baseRef: baseBranch,
@@ -132,9 +167,9 @@ async function decide(
       baseChecks: baseChecksProbe(run.client, run.repo),
       requiredChecks: requiredChecksProbe(run.client, run.repo),
     });
-    return evaluateMergeSafety(facts);
+    return { decision: evaluateMergeSafety(facts), gathered: true };
   } catch (error) {
-    return errorMergeSafetyDecision(describe(error));
+    return { decision: errorMergeSafetyDecision(describe(error)), gathered: false };
   }
 }
 

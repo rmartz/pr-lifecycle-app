@@ -1,11 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { EventRepository } from '../src/events.js';
 import { mergeSafetyName } from '../src/merge-safety-evaluate.js';
-import {
-  RATE_LIMIT_FLOOR,
-  runMergeSafetyEvaluate,
-  runMergeSafetyInvalidate,
-} from '../src/run-merge-safety.js';
+import { RATE_LIMIT_FLOOR } from '../src/rate-limit.js';
+import { runMergeSafetyEvaluate, runMergeSafetyInvalidate } from '../src/run-merge-safety.js';
 import type { FakeClient } from './fake-client.js';
 import { makeFakeClient } from './fake-client.js';
 import { INSTALLATION_ID, REPO_ID } from './fixtures.js';
@@ -185,7 +182,10 @@ describe('runMergeSafetyInvalidate', () => {
       'd-1',
       makeGateDeps({ client }),
     );
-    expect(checkRunPosts(client).map(({ body }) => (body as { status: string }).status)).toEqual([
+    const runWrites = client.writes.filter(({ path }) =>
+      path.startsWith(`repos/${REPO}/check-runs`),
+    );
+    expect(runWrites.map(({ body }) => (body as { status: string }).status)).toEqual([
       'in_progress',
       'in_progress',
       'completed',
@@ -246,7 +246,7 @@ describe('runMergeSafetyInvalidate', () => {
   });
 
   it('logs and stops when the open PRs cannot be listed', async () => {
-    const client = makeFakeClient({});
+    const client = makeFakeClient({ [`repos/${REPO}/branches/main`]: { commit: { sha: 'tip1' } } });
     const deps = makeGateDeps({ client });
     await runMergeSafetyInvalidate(REPOSITORY, 'main', undefined, MS_SHADOW, 'd-1', deps);
     expect([client.writes, deps.log.entries.at(-1)?.message]).toEqual([
@@ -321,7 +321,7 @@ describe('runMergeSafetyInvalidate: base CI runs', () => {
 
 describe('merge-safety runs never throw', () => {
   const throwing = () => {
-    const client = makeFakeClient();
+    const client = makeFakeClient({ [`repos/${REPO}/branches/main`]: { commit: { sha: 'tip1' } } });
     client.list = () => Promise.reject(new Error('socket hang up'));
     return client;
   };

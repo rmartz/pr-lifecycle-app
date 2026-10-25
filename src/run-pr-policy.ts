@@ -13,6 +13,7 @@ import type { EventTarget } from './events.js';
 import type { MintToken } from './installation-token.js';
 import type { LogFields, Logger } from './logger.js';
 import type { RequestFailure } from './rate-limit.js';
+import { isStarved } from './rate-limit.js';
 import type { ActiveToolConfig, PrPolicyPolicy } from './repos.js';
 
 /** pr-policy's settings for a repo it acts on. */
@@ -63,6 +64,8 @@ export interface PrPolicyDeps {
   readonly policy: PolicyIo;
   /** The client's latest failed response (status and path), for logging a failed read. */
   readonly lastFailure: () => RequestFailure | undefined;
+  /** The latest `x-ratelimit-remaining` the client saw. */
+  readonly rateLimitRemaining: () => number | undefined;
   readonly log: Logger;
 }
 
@@ -112,6 +115,15 @@ export async function runPrPolicy(
   }
   const checks = selectChecks(config.policy);
   for (const pr of [...new Set(prs)].sort((a, b) => a - b)) {
+    if (isStarved(deps.rateLimitRemaining(), deps.lastFailure())) {
+      // Out of budget: post nothing rather than a verdict built on failed reads.
+      deps.log.warn('skipped an evaluation: the installation is out of API budget', {
+        ...context,
+        pr,
+        rateLimitRemaining: deps.rateLimitRemaining() ?? null,
+      });
+      continue;
+    }
     const pullRequest = { repo: repository.fullName, pr, client };
     try {
       await evaluateOne(pullRequest, checks, config, { ...context, pr }, deps);

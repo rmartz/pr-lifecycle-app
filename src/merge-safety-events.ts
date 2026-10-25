@@ -1,6 +1,9 @@
 import type { EventRepository, EventTarget, IgnoreReason } from './events.js';
 import { readRepository } from './events.js';
 import { decideRerun } from './gate-events.js';
+
+/** The one PR label merge-safety's verdict reads. */
+const HOTFIX_LABEL = 'hotfix';
 import type { Payload } from './payload.js';
 import { idAt, objectAt, stringAt } from './payload.js';
 
@@ -76,10 +79,32 @@ function decidePullRequest(
   if (SELF_TRIGGERED_ACTIONS.has(action) && sender?.toLowerCase() === botLogin.toLowerCase()) {
     return ignore('self-triggered');
   }
+  if (!changesVerdictInput(action, payload)) {
+    return ignore('unhandled-action');
+  }
   const pr = idAt(objectAt(payload, 'pull_request'), 'number');
   return pr === undefined
     ? ignore('malformed-payload')
     : { kind: 'evaluate', target: { repository, prs: [pr], headSha: undefined } };
+}
+
+/**
+ * Whether a PR event touches anything merge-safety reads. Of the PR's labels it
+ * reads only `hotfix` (its own two it writes, never reads), and of an edit only
+ * the title (a `!` or a `docs` type). The actor App writes several lifecycle
+ * labels per PR change; evaluating on each would spend the budget on verdicts
+ * that can't differ.
+ */
+function changesVerdictInput(action: string, payload: Payload): boolean {
+  switch (action) {
+    case 'labeled':
+    case 'unlabeled':
+      return stringAt(objectAt(payload, 'label'), 'name')?.toLowerCase() === HOTFIX_LABEL;
+    case 'edited':
+      return objectAt(objectAt(payload, 'changes'), 'title') !== undefined;
+    default:
+      return true;
+  }
 }
 
 /** A push to a branch invalidates its PRs; a tag push or a deletion does nothing. */

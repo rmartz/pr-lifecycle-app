@@ -13,6 +13,35 @@ export interface RateLimitMeter {
    * token), so a failed read can be logged with why it failed.
    */
   readonly lastFailure: () => RequestFailure | undefined;
+  /** How many requests this meter's client has made: the delivery's API cost. */
+  readonly calls: () => number;
+}
+
+/**
+ * Below this many requests left in the installation's hour, the gate does no
+ * new work: it posts nothing and logs the skip. A quota-starved gate must never
+ * post a red required check, and keeping a reserve leaves room for the PR
+ * events that matter most.
+ */
+export const RATE_LIMIT_FLOOR = 500;
+
+/** Whether the installation's remaining budget is below the floor. */
+export function isBelowFloor(remaining: number | undefined): boolean {
+  return remaining !== undefined && remaining < RATE_LIMIT_FLOOR;
+}
+
+/**
+ * Whether the client is out of budget: below the floor, or its last failure
+ * was a rate-limit response (429, or 403 with nothing left). A read that
+ * failed this way says nothing about the PR, so the gate must not post a
+ * verdict built on it.
+ */
+export function isStarved(
+  remaining: number | undefined,
+  failure: RequestFailure | undefined,
+): boolean {
+  if (isBelowFloor(remaining)) return true;
+  return failure?.status === 429 || (failure?.status === 403 && remaining === 0);
 }
 
 export interface RequestFailure {
@@ -32,8 +61,10 @@ function pathOf(input: Parameters<typeof fetch>[0]): string {
 export function createRateLimitMeter(base: typeof fetch = fetch): RateLimitMeter {
   let remaining: number | undefined;
   let lastFailure: RequestFailure | undefined;
+  let calls = 0;
   return {
     fetch: async (input, init) => {
+      calls += 1;
       const response = await base(input, init);
       if (!response.ok) {
         lastFailure = { status: response.status, path: pathOf(input) };
@@ -46,6 +77,7 @@ export function createRateLimitMeter(base: typeof fetch = fetch): RateLimitMeter
     },
     remaining: () => remaining,
     lastFailure: () => lastFailure,
+    calls: () => calls,
   };
 }
 

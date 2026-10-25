@@ -46,14 +46,40 @@ function makeCheckRunEvent(run: Payload = {}, overrides: Payload = {}): Payload 
 }
 
 describe('decideMergeSafetyEvent: pull_request', () => {
-  it.each(['opened', 'synchronize', 'reopened', 'edited', 'labeled', 'unlabeled'])(
-    'evaluates the PR on %s',
+  it.each(['opened', 'synchronize', 'reopened'])('evaluates the PR on %s', (action) => {
+    expect(
+      decideMergeSafetyEvent('pull_request', makePullRequestEvent({ action }), OPTIONS),
+    ).toMatchObject({ kind: 'evaluate', target: { prs: [31] } });
+  });
+
+  it.each(['labeled', 'unlabeled'])('evaluates the PR when %s with hotfix', (action) => {
+    const event = makePullRequestEvent({ action, label: { name: 'hotfix' } });
+    expect(decideMergeSafetyEvent('pull_request', event, OPTIONS).kind).toBe('evaluate');
+  });
+
+  it.each(['labeled', 'unlabeled'])(
+    "ignores any other label being %s, which merge-safety doesn't read",
     (action) => {
-      expect(
-        decideMergeSafetyEvent('pull_request', makePullRequestEvent({ action }), OPTIONS),
-      ).toMatchObject({ kind: 'evaluate', target: { prs: [31] } });
+      const event = makePullRequestEvent({ action, label: { name: 'review requested' } });
+      expect(decideMergeSafetyEvent('pull_request', event, OPTIONS)).toEqual({
+        kind: 'ignore',
+        reason: 'unhandled-action',
+      });
     },
   );
+
+  it('evaluates the PR when its title is edited', () => {
+    const event = makePullRequestEvent({
+      action: 'edited',
+      changes: { title: { from: 'feat: x' } },
+    });
+    expect(decideMergeSafetyEvent('pull_request', event, OPTIONS).kind).toBe('evaluate');
+  });
+
+  it('ignores an edit to the body only', () => {
+    const event = makePullRequestEvent({ action: 'edited', changes: { body: { from: 'old' } } });
+    expect(decideMergeSafetyEvent('pull_request', event, OPTIONS).kind).toBe('ignore');
+  });
 
   it("skips the gate's own label write", () => {
     const event = makePullRequestEvent({ action: 'unlabeled', sender: { login: GATE_BOT } });
