@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { failingBaseChecks } from '@rmartz/merge-safety';
 import type { GitHubClient } from '@rmartz/pr-policy';
 import { baseChecksProbe, requiredChecksProbe } from './merge-safety-io.js';
 
@@ -7,17 +8,19 @@ import { baseChecksProbe, requiredChecksProbe } from './merge-safety-io.js';
  * re-evaluates only the PRs it can change.
  *
  * A verdict depends on the PR (its head, title, mergeability and `hotfix`
- * label) and on the base: its tip, and the conclusions of its required checks
- * (base health). PR changes arrive as PR events, which always re-evaluate. The
+ * label) and on the base: its tip, and which of its checks base health counts as
+ * failing. PR changes arrive as PR events, which always re-evaluate. The
  * base side is summed up as a **base key**, stored on the check-run as its
  * `external_id`. An invalidation skips every PR whose latest gate check-run is
  * completed with the current key: re-evaluating it would post the same verdict.
  */
 
 /**
- * The base key for `branch`: its tip SHA plus a digest of its required checks'
- * latest conclusions on that tip. A non-required check finishing doesn't change
- * it, so it costs no fan-out. Undefined when the tip can't be read.
+ * The base key for `branch`: its tip SHA plus a digest of the base checks base
+ * health counts as failing, classified by the library (`failingBaseChecks`). A
+ * check going from pending to green, or a non-required check finishing, leaves
+ * the key unchanged, so the CI runs that finish after every push cost no
+ * fan-out. Undefined when the tip can't be read.
  */
 export async function baseKey(
   client: GitHubClient,
@@ -26,13 +29,10 @@ export async function baseKey(
 ): Promise<string | undefined> {
   const tip = await branchTip(client, repo, branch);
   if (tip === undefined) return undefined;
-  const required = (await requiredChecksProbe(client, repo)(branch)) ?? [];
+  const required = await requiredChecksProbe(client, repo)(branch);
   const runs = await baseChecksProbe(client, repo)(tip);
-  const state = [...required]
-    .sort()
-    .map((name) => `${name}=${runs.find((run) => run.name === name)?.conclusion ?? 'none'}`)
-    .join('\n');
-  return `${tip}:${createHash('sha256').update(state).digest('hex').slice(0, 12)}`;
+  const failing = failingBaseChecks(runs, required).sort().join('\n');
+  return `${tip}:${createHash('sha256').update(failing).digest('hex').slice(0, 12)}`;
 }
 
 /** The tip SHA of `branch`, or undefined when it can't be read. */

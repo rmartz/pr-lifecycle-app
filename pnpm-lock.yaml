@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@rmartz/merge-safety':
-        specifier: 0.16.0
-        version: 0.16.0
+        specifier: 0.17.0
+        version: 0.17.0
       '@rmartz/pr-lifecycle':
         specifier: 11.5.0
         version: 11.5.0
@@ -193,8 +193,8 @@ packages:
   '@oxc-project/types@0.155.0':
     resolution: {integrity: sha512-SeE8JPwW1xs1tHeNycjUtUBdhorRa8o4jlvjwk49R7/Z291i+4DQa7JJIgOm/TaYQZx+QrPQbVJ/9c8dMIZN8Q==}
 
-  '@rmartz/merge-safety@0.16.0':
-    resolution: {integrity: sha512-AUfYLTpwLV3+cHwGmi4Oc27V4SSuH+d8/K9S4xVC6kmHqZ+/1xaWBZEpFvUFHErQEYPw/jAzckcFV442FiPJkQ==}
+  '@rmartz/merge-safety@0.17.0':
+    resolution: {integrity: sha512-RMFkUTM1o4R5U6pB2Q4cm7/YJtRAqSnKIkuWnmIQ8V7NgVf/ySURp9icKaykMT4Utpo4pD0iXmRRDjOrOL38Zg==}
     engines: {node: '>=20.11.0'}
     hasBin: true
 
@@ -1937,7 +1937,7 @@ snapshots:
 
   '@oxc-project/types@0.155.0': {}
 
-  '@rmartz/merge-safety@0.16.0': {}
+  '@rmartz/merge-safety@0.17.0': {}
 
   '@rmartz/pr-lifecycle@11.5.0':
     dependencies:

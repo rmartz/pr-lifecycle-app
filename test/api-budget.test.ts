@@ -88,6 +88,25 @@ describe('API cost: merge-safety', () => {
     expect([calls(client) - first, client.writes.length - writes]).toEqual([9, 0]);
   });
 
+  it('re-checks 5 PRs after a required base check turns green in 9 reads and no writes', async () => {
+    const client = makeOpenPrs(5);
+    const deps = makeGateDeps({ client });
+    await runMergeSafetyInvalidate(REPOSITORY, 'main', 'tip1', MS_SHADOW, 'd-1', deps);
+    client.routes.set(`repos/${REPO}/rules/branches/main`, [
+      {
+        type: 'required_status_checks',
+        parameters: { required_status_checks: [{ context: 'CI' }] },
+      },
+    ]);
+    client.routes.set(`repos/${REPO}/commits/tip1/check-runs?filter=latest`, {
+      check_runs: [{ name: 'CI', conclusion: 'success', app: { slug: 'github-actions' } }],
+    });
+    const first = calls(client);
+    const writes = client.writes.length;
+    await runMergeSafetyInvalidate(REPOSITORY, 'main', 'tip1', MS_SHADOW, 'd-2', deps);
+    expect([calls(client) - first, client.writes.length - writes]).toEqual([9, 0]);
+  });
+
   it('reads each base commit once for the whole fan-out, not once per PR', async () => {
     const client = makeOpenPrs(5, { current: false });
     await runMergeSafetyInvalidate(
