@@ -14,6 +14,7 @@ import type { MintToken } from './installation-token.js';
 import type { LogFields, Logger } from './logger.js';
 import type { RequestFailure } from './rate-limit.js';
 import { isStarved } from './rate-limit.js';
+import { alreadyPosted, wantedStatuses } from './pr-policy-statuses.js';
 import type { ActiveToolConfig, PrPolicyPolicy } from './repos.js';
 
 /** pr-policy's settings for a repo it acts on. */
@@ -161,15 +162,20 @@ async function evaluateOne(
     await deps.policy.applyLabelEdits(target, evaluation);
   }
   const name = verdictName(config);
-  await deps.policy.postVerdict(target, headSha, evaluation, { name });
   const statuses = checkStatuses(checks, evaluation.findings);
-  if (!(await deps.policy.postCheckStatuses(target, headSha, statuses, { context: name }))) {
-    deps.log.warn('could not post the per-check statuses', context);
+  const wanted = wantedStatuses(name, evaluation, statuses);
+  const unchanged = await alreadyPosted(target.client, target.repo, headSha, wanted);
+  if (!unchanged) {
+    await deps.policy.postVerdict(target, headSha, evaluation, { name });
+    if (!(await deps.policy.postCheckStatuses(target, headSha, statuses, { context: name }))) {
+      deps.log.warn('could not post the per-check statuses', context);
+    }
   }
   deps.log.info('evaluated', {
     ...context,
     mode: config.mode,
     name,
+    posted: !unchanged,
     outcome: evaluation.outcome,
     title: evaluation.title,
     retitle: title ?? null,
