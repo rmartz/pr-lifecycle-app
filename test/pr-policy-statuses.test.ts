@@ -3,7 +3,7 @@ import { alreadyPosted, wantedStatuses } from '../src/pr-policy-statuses.js';
 import { makeFakeClient } from './fake-client.js';
 import { makeEvaluation } from './gate-fixtures.js';
 
-const PATH = 'repos/o/r/commits/s1/status?per_page=100';
+const PATH = 'repos/o/r/commits/s1/statuses?per_page=100';
 
 describe('wantedStatuses', () => {
   it('lists the verdict, then one status per check under the name', () => {
@@ -23,36 +23,40 @@ describe('wantedStatuses', () => {
 });
 
 describe('alreadyPosted', () => {
+  const BOT = 'rmartz-pr-lifecycle-gate[bot]';
   const wanted = [{ context: 'p', state: 'success', description: 'Passed' }];
+  const status = (state: string, description: string | null, login = BOT) => ({
+    context: 'p',
+    state,
+    description,
+    creator: { login },
+  });
+  const check = (statuses: unknown) =>
+    alreadyPosted(makeFakeClient({ [PATH]: statuses }), 'o/r', 's1', BOT, wanted);
 
-  it('is true when each wanted status is the latest of its context', async () => {
-    const client = makeFakeClient({
-      [PATH]: { statuses: [{ context: 'p', state: 'success', description: 'Passed' }] },
-    });
-    expect(await alreadyPosted(client, 'o/r', 's1', wanted)).toBe(true);
+  it('is true when the gate posted each wanted status as the latest of its context', async () => {
+    expect(await check([status('success', 'Passed')])).toBe(true);
   });
 
-  it('is false when a state differs', async () => {
-    const client = makeFakeClient({
-      [PATH]: { statuses: [{ context: 'p', state: 'pending', description: 'Passed' }] },
-    });
-    expect(await alreadyPosted(client, 'o/r', 's1', wanted)).toBe(false);
+  it("is false when the latest is another poster's identical status, as during a cutover", async () => {
+    expect(await check([status('success', 'Passed', 'github-actions[bot]')])).toBe(false);
+  });
+
+  it('judges only the newest status of a context', async () => {
+    expect(await check([status('pending', 'Passed'), status('success', 'Passed')])).toBe(false);
   });
 
   it('is false when a wanted context was never posted', async () => {
-    const client = makeFakeClient({ [PATH]: { statuses: [] } });
-    expect(await alreadyPosted(client, 'o/r', 's1', wanted)).toBe(false);
+    expect(await check([])).toBe(false);
   });
 
   it('reads a missing description as empty', async () => {
-    const client = makeFakeClient({
-      [PATH]: { statuses: [{ context: 'p', state: 'success', description: null }] },
-    });
     const empty = [{ context: 'p', state: 'success', description: '' }];
-    expect(await alreadyPosted(client, 'o/r', 's1', empty)).toBe(true);
+    const client = makeFakeClient({ [PATH]: [status('success', null)] });
+    expect(await alreadyPosted(client, 'o/r', 's1', BOT, empty)).toBe(true);
   });
 
-  it('is false when the status cannot be read, so the verdict is posted', async () => {
-    expect(await alreadyPosted(makeFakeClient(), 'o/r', 's1', wanted)).toBe(false);
+  it('is false when the statuses cannot be read, so the verdict is posted', async () => {
+    expect(await alreadyPosted(makeFakeClient(), 'o/r', 's1', BOT, wanted)).toBe(false);
   });
 });

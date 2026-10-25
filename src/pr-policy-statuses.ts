@@ -39,23 +39,40 @@ export function wantedStatuses(
 }
 
 /**
- * Whether every wanted status is already the latest of its context on `sha`.
- * One read (the combined status, latest per context). Any doubt, such as an
- * unreadable status, is false, so the verdict is posted.
+ * Whether every wanted status is already the latest of its context on `sha`,
+ * **posted by the gate itself** (`botLogin`). Another poster's identical status
+ * doesn't count: during a cutover the repo's workflow posts the same verdict
+ * under the same name, and the required check accepts only the gate App's. One
+ * read: the head's statuses, newest first. Any doubt, such as an unreadable
+ * list, is false, so the verdict is posted.
  */
 export async function alreadyPosted(
   client: GitHubClient,
   repo: string,
   sha: string,
+  botLogin: string,
   wanted: readonly PostedStatus[],
 ): Promise<boolean> {
-  const out = (await client.getJson(`repos/${repo}/commits/${sha}/status?per_page=100`)) as {
-    statuses: { context: string; state: string; description: string | null }[];
-  } | null;
-  if (out === null) return false;
-  const latest = new Map(out.statuses.map((status) => [status.context, status]));
+  const out = (await client.getJson(`repos/${repo}/commits/${sha}/statuses?per_page=100`)) as
+    | {
+        context: string;
+        state: string;
+        description: string | null;
+        creator: { login: string } | null;
+      }[]
+    | null;
+  if (!Array.isArray(out)) return false;
+  const latest = new Map<string, (typeof out)[number]>();
+  for (const status of out) {
+    if (!latest.has(status.context)) latest.set(status.context, status);
+  }
+  const bot = botLogin.toLowerCase();
   return wanted.every((status) => {
     const posted = latest.get(status.context);
-    return posted?.state === status.state && (posted.description ?? '') === status.description;
+    return (
+      posted?.creator?.login.toLowerCase() === bot &&
+      posted.state === status.state &&
+      (posted.description ?? '') === status.description
+    );
   });
 }

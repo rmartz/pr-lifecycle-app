@@ -63,6 +63,8 @@ export interface PrPolicyDeps {
   readonly mintToken: MintToken;
   readonly createClient: (token: string) => GitHubClient;
   readonly policy: PolicyIo;
+  /** The gate App's bot login: only its own statuses count as already posted. */
+  readonly botLogin: string;
   /** The client's latest failed response (status and path), for logging a failed read. */
   readonly lastFailure: () => RequestFailure | undefined;
   /** The latest `x-ratelimit-remaining` the client saw. */
@@ -164,7 +166,7 @@ async function evaluateOne(
   const name = verdictName(config);
   const statuses = checkStatuses(checks, evaluation.findings);
   const wanted = wantedStatuses(name, evaluation, statuses);
-  const unchanged = await alreadyPosted(target.client, target.repo, headSha, wanted);
+  const unchanged = await alreadyPosted(target.client, target.repo, headSha, deps.botLogin, wanted);
   if (!unchanged) {
     await deps.policy.postVerdict(target, headSha, evaluation, { name });
     if (!(await deps.policy.postCheckStatuses(target, headSha, statuses, { context: name }))) {
