@@ -158,9 +158,9 @@ describe('gateDeps', () => {
     expect([deps.webhookSecret, deps.botLogin]).toEqual(['s', 'rmartz-pr-gate[bot]']);
   });
 
-  it('shadows pr-policy on the proof-of-concept repository', () => {
+  it('runs pr-policy live on the proof-of-concept repository', () => {
     const deps = gateDeps(GATE_CONFIG, makeLogger());
-    expect(deps.prPolicyConfig('rmartz/firebase-nextjs-template')?.mode).toBe('shadow');
+    expect(deps.prPolicyConfig('rmartz/firebase-nextjs-template')?.mode).toBe('live');
   });
 
   it('leaves pr-policy off everywhere else', () => {

@@ -179,7 +179,7 @@ acknowledged as `repo-not-enabled`. Each tool cuts over per repo on its own.
 | Repo                              | Tool         | Mode     | Policy                                                |
 | --------------------------------- | ------------ | -------- | ----------------------------------------------------- |
 | `rmartz/firebase-nextjs-template` | pr-lifecycle | `live`   | `uat: on`, arming off                                 |
-| `rmartz/firebase-nextjs-template` | pr-policy    | `shadow` | UAT gate on, `requireUatLabel`, `retitleDependabotCi` |
+| `rmartz/firebase-nextjs-template` | pr-policy    | `live`   | UAT gate on, `requireUatLabel`, `retitleDependabotCi` |
 | `rmartz/firebase-nextjs-template` | merge-safety | `shadow` | `concurrency: 4`                                      |
 
 ### Cutting a tool over on a repo

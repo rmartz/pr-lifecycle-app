@@ -77,10 +77,10 @@ export const REPOS: Readonly<Record<string, RepoConfig>> = {
   // Live: the template no longer runs the action.
   'rmartz/firebase-nextjs-template': {
     prLifecycle: { mode: 'live', policy: { uat: 'on', armAutoMerge: false } },
-    // Matches the template's pr-policy.yml. Shadow: posted as `pr-policy (app)`
-    // beside the action's `pr-policy` until the verdicts match.
+    // The inputs the template's retired pr-policy.yml passed the action. Live:
+    // the gate App posts the required `pr-policy` check.
     prPolicy: {
-      mode: 'shadow',
+      mode: 'live',
       policy: {
         skipUat: false,
         requireUatLabel: true,
