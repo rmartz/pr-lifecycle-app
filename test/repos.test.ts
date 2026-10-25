@@ -26,9 +26,9 @@ describe('toolConfig: the reviewed allowlist', () => {
     expect(toolConfig('rmartz/personal-budget', 'prLifecycle')).toBeUndefined();
   });
 
-  it("shadows pr-policy on the proof-of-concept repo with its workflow's inputs", () => {
+  it("runs pr-policy live on the proof-of-concept repo with its workflow's inputs", () => {
     expect(toolConfig('rmartz/firebase-nextjs-template', 'prPolicy')).toEqual({
-      mode: 'shadow',
+      mode: 'live',
       policy: {
         skipUat: false,
         requireUatLabel: true,
