@@ -24,10 +24,16 @@ describe('baseKey', () => {
     expect(await baseKey(makeBase([]), REPO, 'main')).toMatch(/^tip1:[0-9a-f]{12}$/);
   });
 
-  it('changes when a required check concludes', async () => {
+  it('changes when a required check fails', async () => {
     const before = await baseKey(makeBase([{ name: 'Test', conclusion: null }]), REPO, 'main');
     const after = await baseKey(makeBase([{ name: 'Test', conclusion: 'failure' }]), REPO, 'main');
     expect(after).not.toBe(before);
+  });
+
+  it("doesn't change when a required check turns green, which can't change a verdict", async () => {
+    const before = await baseKey(makeBase([{ name: 'Test', conclusion: null }]), REPO, 'main');
+    const after = await baseKey(makeBase([{ name: 'Test', conclusion: 'success' }]), REPO, 'main');
+    expect(after).toBe(before);
   });
 
   it("doesn't change when a non-required check concludes", async () => {

@@ -103,8 +103,10 @@ of the name in place, mirrored to a commit status. Live, also reconcile
 `update required` / `merge conflict`. The check-run's `external_id` records the
 **base key** the verdict was computed against
 ([`src/merge-safety-dedupe.ts`](../src/merge-safety-dedupe.ts)): the base tip
-plus a digest of its required checks' conclusions, everything the verdict reads
-from the base.
+plus a digest of the base checks base health counts as failing, classified by
+the library's `failingBaseChecks`. That is everything the verdict reads from the
+base. A required check going from pending to green leaves the key unchanged, so
+the CI runs that finish after every push re-evaluate nothing.
 
 **Invalidate** replaces the workflow's per-PR `workflow_dispatch` fan-out. A push
 to `main` reaches the gate as one `push` and one `workflow_run` per push-started
@@ -139,6 +141,7 @@ both tools. Measured per delivery (`test/api-budget.test.ts` pins these):
 | merge-safety, one PR evaluation (base current)        | 9     |
 | merge-safety fan-out, 5 PRs with stale verdicts       | 54    |
 | merge-safety fan-out, 5 PRs with current verdicts     | 9     |
+| merge-safety, 5 PRs after a base check turns green    | 9     |
 | merge-safety, a stale base CI run                     | 1     |
 | a `status`-started workflow run; a non-`hotfix` label | 0     |
 
