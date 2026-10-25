@@ -1,16 +1,17 @@
-import type { EventTarget, IgnoreReason } from './events.js';
+import type { EventRepository, EventTarget, IgnoreReason } from './events.js';
 import { readRepository } from './events.js';
 import type { Payload } from './payload.js';
-import { idAt, objectAt, stringAt } from './payload.js';
+import { idAt, objectAt, objectsAt, stringAt } from './payload.js';
 
 /**
  * Deciding which PRs a gate delivery re-evaluates with pr-policy. Pure, like the
  * actor's `decideEvent`, and mirrors the triggers of pr-policy's caller
- * workflow: the PR's own changes, plus pr-lifecycle's sign-off status.
+ * workflow: the PR's own changes, plus pr-lifecycle's sign-off status. A Re-run
+ * of the gate's own pr-policy check-run re-evaluates too.
  */
 
 /** The events the gate's pr-policy route reads; anything else is ignored. */
-export const PR_POLICY_EVENTS = ['pull_request', 'status'] as const;
+export const PR_POLICY_EVENTS = ['pull_request', 'status', 'check_run'] as const;
 type PrPolicyEvent = (typeof PR_POLICY_EVENTS)[number];
 
 /** The pull_request actions that change what pr-policy judges. */
@@ -41,6 +42,8 @@ export type GateDecision =
 export interface GateDecideOptions {
   /** The gate App's bot login, e.g. `rmartz-pr-gate[bot]`. */
   readonly botLogin: string;
+  /** The check-run names the gate posts pr-policy under (real and shadow). */
+  readonly checkNames: readonly string[];
   /** Whether pr-policy acts on this `owner/name`. */
   readonly isEnabled: (fullName: string) => boolean;
 }
@@ -63,6 +66,38 @@ function decidePullRequest(payload: Payload, botLogin: string): GateDecision | n
     return ignore('self-triggered');
   }
   return idAt(objectAt(payload, 'pull_request'), 'number') ?? ignore('malformed-payload');
+}
+
+/**
+ * The target of a Re-run (`check_run` `rerequested`) of one of the gate's own
+ * check-runs: the PRs into this repository it lists, or else its head SHA. Any
+ * other check-run action or name is ignored, so the gate's own check-run
+ * writes (`created`, `completed`) never re-trigger it. Shared by both gate tools.
+ */
+export function decideRerun(
+  payload: Payload,
+  repository: EventRepository,
+  checkNames: readonly string[],
+):
+  | { readonly kind: 'ignore'; readonly reason: IgnoreReason }
+  | { readonly kind: 'evaluate'; readonly target: EventTarget } {
+  if (stringAt(payload, 'action') !== 'rerequested') {
+    return { kind: 'ignore', reason: 'unhandled-action' };
+  }
+  const run = objectAt(payload, 'check_run');
+  const name = stringAt(run, 'name');
+  if (name === undefined || !checkNames.includes(name)) {
+    return { kind: 'ignore', reason: 'unhandled-action' };
+  }
+  const prs = objectsAt(run, 'pull_requests')
+    .filter((pull) => idAt(objectAt(objectAt(pull, 'base'), 'repo'), 'id') === repository.id)
+    .map((pull) => idAt(pull, 'number'))
+    .filter((pr) => pr !== undefined);
+  const headSha = prs.length === 0 ? stringAt(run, 'head_sha') : undefined;
+  if (prs.length === 0 && headSha === undefined) {
+    return { kind: 'ignore', reason: 'malformed-payload' };
+  }
+  return { kind: 'evaluate', target: { repository, prs, headSha } };
 }
 
 /**
@@ -102,5 +137,7 @@ export function decideGateEvent(
         ? ignore('malformed-payload')
         : { kind: 'evaluate', target: { repository, prs: [], headSha: sha } };
     }
+    case 'check_run':
+      return decideRerun(payload, repository, options.checkNames);
   }
 }

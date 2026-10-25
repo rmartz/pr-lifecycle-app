@@ -1,7 +1,8 @@
 import type { EventRepository, EventTarget, IgnoreReason } from './events.js';
 import { readRepository } from './events.js';
+import { decideRerun } from './gate-events.js';
 import type { Payload } from './payload.js';
-import { idAt, objectAt, objectsAt, stringAt } from './payload.js';
+import { idAt, objectAt, stringAt } from './payload.js';
 
 /**
  * Deciding what a gate delivery means for merge-safety. Pure. It mirrors the
@@ -119,31 +120,6 @@ function decideWorkflowRun(payload: Payload, repository: EventRepository): Merge
     : { kind: 'invalidate', repository, baseBranch: branch, tipSha };
 }
 
-/** A Re-run of the gate's own merge-safety check-run re-evaluates its PRs. */
-function decideCheckRun(
-  payload: Payload,
-  repository: EventRepository,
-  checkNames: readonly string[],
-): MergeSafetyDecision {
-  if (stringAt(payload, 'action') !== 'rerequested') {
-    return ignore('unhandled-action');
-  }
-  const run = objectAt(payload, 'check_run');
-  const name = stringAt(run, 'name');
-  if (name === undefined || !checkNames.includes(name)) {
-    return ignore('unhandled-action');
-  }
-  const prs = objectsAt(run, 'pull_requests')
-    .filter((pull) => idAt(objectAt(objectAt(pull, 'base'), 'repo'), 'id') === repository.id)
-    .map((pull) => idAt(pull, 'number'))
-    .filter((pr) => pr !== undefined);
-  const headSha = prs.length === 0 ? stringAt(run, 'head_sha') : undefined;
-  if (prs.length === 0 && headSha === undefined) {
-    return ignore('malformed-payload');
-  }
-  return { kind: 'evaluate', target: { repository, prs, headSha } };
-}
-
 /** Decides what one gate delivery should do for merge-safety, if anything. */
 export function decideMergeSafetyEvent(
   eventName: string,
@@ -168,6 +144,6 @@ export function decideMergeSafetyEvent(
     case 'workflow_run':
       return decideWorkflowRun(payload, repository);
     case 'check_run':
-      return decideCheckRun(payload, repository, options.checkNames);
+      return decideRerun(payload, repository, options.checkNames);
   }
 }

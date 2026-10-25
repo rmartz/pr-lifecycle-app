@@ -46,10 +46,11 @@ workflow for it ([`src/gate-handler.ts`](../src/gate-handler.ts),
 
 **Events** ([`src/gate-events.ts`](../src/gate-events.ts), pure):
 
-| Event          | Actions or context                                        | PRs evaluated                      |
-| -------------- | --------------------------------------------------------- | ---------------------------------- |
-| `pull_request` | opened, synchronize, reopened, edited, labeled, unlabeled | the PR                             |
-| `status`       | context `pr-lifecycle/sign-off` only                      | the open PRs whose head is the SHA |
+| Event          | Actions or context                                        | PRs evaluated                                                                 |
+| -------------- | --------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `pull_request` | opened, synchronize, reopened, edited, labeled, unlabeled | the PR                                                                        |
+| `status`       | context `pr-lifecycle/sign-off` only                      | the open PRs whose head is the SHA                                            |
+| `check_run`    | `rerequested` on `pr-policy` or `pr-policy (app)`         | its PRs: the native **Re-run** button, which replaces re-running the workflow |
 
 A `labeled`, `unlabeled` or `edited` event the gate's own bot sent is skipped,
 so its label and retitle writes don't re-trigger it. The actor App's label
