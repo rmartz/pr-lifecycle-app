@@ -120,6 +120,12 @@ export interface CheckPost {
   readonly conclusion: 'success' | 'failure' | 'pending';
   readonly title: string;
   readonly summary: string;
+  /**
+   * The base key the verdict was computed against (./merge-safety-dedupe.ts),
+   * kept as the check-run's `external_id` so a later invalidation can tell the
+   * verdict is still current.
+   */
+  readonly externalId?: string;
 }
 
 /** GitHub rejects a commit-status description longer than this. */
@@ -139,14 +145,16 @@ export async function postCheck(
   now: Date,
 ): Promise<boolean> {
   const output = { title: post.title, summary: post.summary };
+  const externalId = post.externalId === undefined ? {} : { external_id: post.externalId };
   const state =
     post.conclusion === 'pending'
-      ? { status: 'in_progress', output }
+      ? { status: 'in_progress', output, ...externalId }
       : {
           status: 'completed',
           conclusion: post.conclusion,
           completed_at: now.toISOString(),
           output,
+          ...externalId,
         };
   const runs = await client.list(
     `repos/${repo}/commits/${headSha}/check-runs?check_name=${encodeURIComponent(post.name)}&filter=all`,

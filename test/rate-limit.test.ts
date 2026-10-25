@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { createRateLimitMeter, forEachBounded } from '../src/rate-limit.js';
+import {
+  createRateLimitMeter,
+  forEachBounded,
+  isStarved,
+  RATE_LIMIT_FLOOR,
+} from '../src/rate-limit.js';
 
 function respondingWith(headers: Record<string, string>): typeof fetch {
   return () => Promise.resolve(new Response('{}', { headers }));
@@ -52,6 +57,37 @@ describe('createRateLimitMeter: failures', () => {
     const meter = createRateLimitMeter(() => Promise.resolve(new Response('', { status: 404 })));
     await meter.fetch(new Request('https://api.github.com/repos/o/r/pulls/9'));
     expect(meter.lastFailure()?.path).toBe('/repos/o/r/pulls/9');
+  });
+});
+
+describe('createRateLimitMeter: calls', () => {
+  it('counts every request the client makes', async () => {
+    const meter = createRateLimitMeter(respondingWith({}));
+    await meter.fetch('https://api.github.com/a');
+    await meter.fetch('https://api.github.com/b');
+    expect(meter.calls()).toBe(2);
+  });
+});
+
+describe('isStarved', () => {
+  it('is false with budget to spare and no failure', () => {
+    expect(isStarved(4000, undefined)).toBe(false);
+  });
+
+  it('is true below the floor', () => {
+    expect(isStarved(RATE_LIMIT_FLOOR - 1, undefined)).toBe(true);
+  });
+
+  it('is true after a 429', () => {
+    expect(isStarved(undefined, { status: 429, path: '/x' })).toBe(true);
+  });
+
+  it('is true after a 403 with nothing left', () => {
+    expect(isStarved(0, { status: 403, path: '/x' })).toBe(true);
+  });
+
+  it('is false after a 403 with budget left, which is a permission error', () => {
+    expect(isStarved(3000, { status: 403, path: '/x' })).toBe(false);
   });
 });
 

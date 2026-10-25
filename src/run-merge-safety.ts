@@ -1,15 +1,10 @@
 import type { EventRepository, EventTarget } from './events.js';
 import type { MergeSafetyConfig, MergeSafetyDeps, Run } from './merge-safety-evaluate.js';
-import { describe, evaluateOne, mergeSafetyName } from './merge-safety-evaluate.js';
+import { describe, evaluateOne, mergeSafetyName, starved } from './merge-safety-evaluate.js';
+import { baseKey, branchTip, isCurrentVerdict } from './merge-safety-dedupe.js';
 import { openPullsOnBase, postCheck } from './merge-safety-io.js';
+import { memoizeReads } from './memo-client.js';
 import { forEachBounded } from './rate-limit.js';
-
-/**
- * Below this many requests left in the installation's hour, a fan-out stops
- * evaluating. The PRs it didn't reach keep their pending mark, which holds the
- * merge, and the next base event or a Re-run picks them up.
- */
-export const RATE_LIMIT_FLOOR = 500;
 
 async function prepare(
   repository: EventRepository,
@@ -20,7 +15,8 @@ async function prepare(
   const context = { delivery: deliveryId, repo: repository.fullName, tool: 'merge-safety' };
   try {
     const token = await deps.mintToken(repository.installationId, repository.name);
-    return { client: deps.createClient(token), repo: repository.fullName, config, context, deps };
+    const client = memoizeReads(deps.createClient(token));
+    return { client, repo: repository.fullName, config, context, deps };
   } catch (error) {
     deps.log.error('could not prepare the merge-safety run', {
       ...context,
@@ -91,46 +87,48 @@ export async function runMergeSafetyInvalidate(
   }
 }
 
-/** Whether `sha` is still the tip of `branch`; undefined when the branch can't be read. */
-async function isTip(run: Run, branch: string, sha: string): Promise<boolean | undefined> {
-  const out = (await run.client.getJson(
-    `repos/${run.repo}/branches/${encodeURIComponent(branch)}`,
-  )) as { commit: { sha: string } } | null;
-  return out === null ? undefined : out.commit.sha === sha;
-}
-
+/**
+ * The fan-out: only the PRs whose latest gate verdict wasn't computed against
+ * the current base key are marked pending and re-evaluated. A base event that
+ * changed nothing a verdict reads (a stale CI run, a non-required check, a
+ * redelivery) costs a few shared reads and posts nothing.
+ */
 async function invalidate(run: Run, baseBranch: string, tipSha: string | undefined): Promise<void> {
   const { config, deps } = run;
   const context = { ...run.context, baseBranch };
-  if (tipSha !== undefined) {
-    const current = await isTip(run, baseBranch, tipSha);
-    if (current !== true) {
-      const fields = { ...context, tipSha, failure: deps.lastFailure() ?? null };
-      if (current === undefined) {
-        deps.log.error('could not read the base branch', fields);
-      } else {
-        deps.log.info('skipped a base CI run that is no longer the tip', fields);
-      }
-      return;
-    }
+  const failed = (message: string) =>
+    deps.log.error(message, { ...context, failure: deps.lastFailure() ?? null });
+  const tip = await branchTip(run.client, run.repo, baseBranch);
+  if (tip !== undefined && tipSha !== undefined && tip !== tipSha) {
+    deps.log.info('skipped a base CI run that is no longer the tip', { ...context, tipSha });
+    return;
+  }
+  // The key re-reads the tip through the cache, so this costs no extra call.
+  const key = tip === undefined ? undefined : await baseKey(run.client, run.repo, baseBranch);
+  if (key === undefined) {
+    failed('could not read the base branch');
+    return;
   }
   const pulls = await openPullsOnBase(run.client, run.repo, baseBranch);
   if (pulls === undefined) {
-    deps.log.error('could not list the open PRs on the moved base', {
-      ...context,
-      failure: deps.lastFailure() ?? null,
-    });
+    failed('could not list the open PRs on the moved base');
     return;
   }
-  if (belowFloor(deps)) {
-    deps.log.warn('skipped an invalidation at the rate-limit floor', {
+  const name = mergeSafetyName(config);
+  const stale = [];
+  for (const pull of pulls) {
+    if (!(await isCurrentVerdict(run.client, run.repo, pull.headSha, name, key))) {
+      stale.push(pull);
+    }
+  }
+  if (stale.length > 0 && starved(deps)) {
+    deps.log.warn('skipped an invalidation: the installation is out of API budget', {
       ...context,
       rateLimitRemaining: deps.rateLimitRemaining() ?? null,
     });
     return;
   }
-  const name = mergeSafetyName(config);
-  for (const pull of pulls) {
+  for (const pull of stale) {
     await postCheck(
       run.client,
       run.repo,
@@ -140,21 +138,23 @@ async function invalidate(run: Run, baseBranch: string, tipSha: string | undefin
         conclusion: 'pending',
         title: 'Re-evaluating',
         summary: 'Re-evaluating against the updated base…',
+        externalId: key,
       },
       deps.now(),
     );
   }
   let stopped = false;
-  await forEachBounded(pulls, config.policy.concurrency, async ({ number }) => {
-    if (stopped || belowFloor(deps)) {
+  await forEachBounded(stale, config.policy.concurrency, async ({ number }) => {
+    if (stopped || starved(deps)) {
       stopped = true;
       return;
     }
-    await evaluateOne(run, number);
+    await evaluateOne(run, number, key);
   });
   const fields = {
     ...context,
     prs: pulls.length,
+    reevaluated: stale.length,
     rateLimitRemaining: deps.rateLimitRemaining() ?? null,
   };
   if (stopped) {
@@ -162,11 +162,6 @@ async function invalidate(run: Run, baseBranch: string, tipSha: string | undefin
   } else {
     deps.log.info('invalidated', fields);
   }
-}
-
-function belowFloor(deps: MergeSafetyDeps): boolean {
-  const remaining = deps.rateLimitRemaining();
-  return remaining !== undefined && remaining < RATE_LIMIT_FLOOR;
 }
 
 async function openPullsAtHead(run: Run, sha: string): Promise<number[] | undefined> {

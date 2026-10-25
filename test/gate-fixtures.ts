@@ -125,6 +125,7 @@ export function makeGateDeps(options: GateOptions = {}): FakeGateDeps {
         : undefined,
     createClient: (token) => options.client ?? makeClient(token, calls, options.sendOk ?? true),
     rateLimitRemaining: () => 4321,
+    apiCalls: () => 17,
     lastFailure: () => ({ status: 403, path: '/repos/rmartz/firebase-nextjs-template/pulls' }),
     sleep: () => Promise.resolve(),
     now: () => new Date('2026-10-24T12:00:00Z'),

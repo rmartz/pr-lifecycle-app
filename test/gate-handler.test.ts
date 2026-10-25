@@ -182,3 +182,14 @@ describe('handleGateWebhook: merge-safety', () => {
     ]);
   });
 });
+
+describe('handleGateWebhook: cost', () => {
+  it("logs each accepted delivery's API calls and remaining budget when done", async () => {
+    const deps = makeGateDeps();
+    await handleGateWebhook(makeRequest(makePullRequestEvent()), deps).background;
+    expect(deps.log.entries.at(-1)).toMatchObject({
+      message: 'delivery done',
+      fields: { event: 'pull_request', apiCalls: 17, rateLimitRemaining: 4321 },
+    });
+  });
+});
