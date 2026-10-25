@@ -151,10 +151,12 @@ evaluation measured 25–33 calls live, and about ten of those are writes: the
 verdict's check-run and status, plus one status per check. Most re-evaluations
 repeat the last verdict, because the actor re-posts an unchanged
 `pr-lifecycle/sign-off` status on every reconcile, several per PR change. So
-the gate reads the head's combined status first (one call,
+the gate reads the head's statuses first (one call,
 [`src/pr-policy-statuses.ts`](../src/pr-policy-statuses.ts)) and skips every
 write when the verdict and each per-check status are already the latest of their
-context. Its `evaluated` log says whether it `posted`.
+context and were posted by the gate itself. Another poster's identical status
+doesn't count: during a cutover the repo's workflow posts the same verdict, but
+the required check accepts only the gate App's. Its `evaluated` log says whether it `posted`.
 
 **Out of budget, the gate posts nothing.** Below `RATE_LIMIT_FLOOR` (500
 remaining), or after a rate-limit response (429, or 403 with nothing left), it

@@ -220,8 +220,8 @@ describe('runPrPolicy: settings', () => {
 
 describe('runPrPolicy: unchanged verdicts', () => {
   // What makeEvaluation() and SHADOW_CONFIG produce, as GitHub would list it.
-  const posted = (overrides: Record<string, string> = {}) => ({
-    statuses: [
+  const posted = (overrides: Record<string, string> = {}, login = 'rmartz-pr-gate[bot]') =>
+    [
       { context: 'pr-policy (app)', state: 'failure', description: 'Title type is wrong' },
       ...['merge-block', 'base-branch', 'title', 'ci-change', 'uat', 'uat-label', 'dependabot'].map(
         (check) => ({
@@ -232,11 +232,11 @@ describe('runPrPolicy: unchanged verdicts', () => {
       ),
     ].map((status) => ({
       ...status,
+      creator: { login },
       ...(overrides[status.context] === undefined
         ? {}
         : { description: overrides[status.context] }),
-    })),
-  });
+    }));
 
   it('posts nothing when the verdict and every per-check status are already posted', async () => {
     const deps = makeGateDeps({ combinedStatus: posted() });
@@ -246,6 +246,12 @@ describe('runPrPolicy: unchanged verdicts', () => {
 
   it('posts again when one per-check status differs', async () => {
     const deps = makeGateDeps({ combinedStatus: posted({ 'pr-policy (app) / uat': 'Waiting' }) });
+    await runPrPolicy(makeTarget(), SHADOW_CONFIG, 'd-1', deps);
+    expect(ops(deps)).toContain('postVerdict');
+  });
+
+  it("posts its own verdict over another poster's identical statuses", async () => {
+    const deps = makeGateDeps({ combinedStatus: posted({}, 'github-actions[bot]') });
     await runPrPolicy(makeTarget(), SHADOW_CONFIG, 'd-1', deps);
     expect(ops(deps)).toContain('postVerdict');
   });
@@ -260,7 +266,7 @@ describe('runPrPolicy: unchanged verdicts', () => {
     const deps = makeGateDeps({ combinedStatus: posted() });
     await runPrPolicy(makeTarget(), SHADOW_CONFIG, 'd-1', deps);
     expect(deps.calls.filter(({ op }) => op === 'getJson').map(({ args }) => args)).toEqual([
-      ['repos/rmartz/firebase-nextjs-template/commits/head1/status?per_page=100'],
+      ['repos/rmartz/firebase-nextjs-template/commits/head1/statuses?per_page=100'],
     ]);
   });
 });
