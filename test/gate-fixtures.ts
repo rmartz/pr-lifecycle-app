@@ -69,10 +69,19 @@ export interface IoCall {
 }
 
 /** A client whose only write the runner makes itself (the retitle) is recorded. */
-export function makeClient(token: string, calls: IoCall[], sendOk = true): GitHubClient {
+export function makeClient(
+  token: string,
+  calls: IoCall[],
+  sendOk = true,
+  combinedStatus: unknown = null,
+): GitHubClient {
   const unused = () => Promise.reject(new Error(`not expected for ${token}`));
   return {
-    getJson: unused,
+    // The only read the runner makes itself: the head's combined status.
+    getJson: (path) => {
+      calls.push({ op: 'getJson', args: [path] });
+      return Promise.resolve(combinedStatus);
+    },
     list: unused,
     getRaw: unused,
     send: (method, path, body) => {
@@ -101,6 +110,8 @@ export interface GateOptions {
   readonly mergeSafety?: MergeSafetyConfig;
   /** The client merge-safety (and the retitle) run against; a recording fake by default. */
   readonly client?: GitHubClient;
+  /** The head's combined status the recording client returns; unreadable by default. */
+  readonly combinedStatus?: unknown;
   readonly overrides?: Partial<GateHandlerDeps>;
 }
 
@@ -123,7 +134,9 @@ export function makeGateDeps(options: GateOptions = {}): FakeGateDeps {
       fullName.toLowerCase() === 'rmartz/firebase-nextjs-template'
         ? options.mergeSafety
         : undefined,
-    createClient: (token) => options.client ?? makeClient(token, calls, options.sendOk ?? true),
+    createClient: (token) =>
+      options.client ??
+      makeClient(token, calls, options.sendOk ?? true, options.combinedStatus ?? null),
     rateLimitRemaining: () => 4321,
     apiCalls: () => 17,
     lastFailure: () => ({ status: 403, path: '/repos/rmartz/firebase-nextjs-template/pulls' }),

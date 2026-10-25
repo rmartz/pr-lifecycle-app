@@ -19,7 +19,8 @@ function makeTarget(overrides: Partial<EventTarget> = {}): EventTarget {
   };
 }
 
-const ops = (deps: ReturnType<typeof makeGateDeps>) => deps.calls.map(({ op }) => op);
+const ops = (deps: ReturnType<typeof makeGateDeps>) =>
+  deps.calls.map(({ op }) => op).filter((op) => op !== 'getJson');
 const call = (deps: ReturnType<typeof makeGateDeps>, op: string) =>
   deps.calls.find((entry) => entry.op === op)?.args;
 
@@ -214,6 +215,53 @@ describe('runPrPolicy: settings', () => {
     });
     await runPrPolicy(makeTarget(), SHADOW_CONFIG, 'd-1', deps);
     expect(checkCount(deps)).toBe(7);
+  });
+});
+
+describe('runPrPolicy: unchanged verdicts', () => {
+  // What makeEvaluation() and SHADOW_CONFIG produce, as GitHub would list it.
+  const posted = (overrides: Record<string, string> = {}) => ({
+    statuses: [
+      { context: 'pr-policy (app)', state: 'failure', description: 'Title type is wrong' },
+      ...['merge-block', 'base-branch', 'title', 'ci-change', 'uat', 'uat-label', 'dependabot'].map(
+        (check) => ({
+          context: `pr-policy (app) / ${check}`,
+          state: check === 'title' ? 'failure' : 'success',
+          description: check === 'title' ? 'Title type is wrong' : 'Passed',
+        }),
+      ),
+    ].map((status) => ({
+      ...status,
+      ...(overrides[status.context] === undefined
+        ? {}
+        : { description: overrides[status.context] }),
+    })),
+  });
+
+  it('posts nothing when the verdict and every per-check status are already posted', async () => {
+    const deps = makeGateDeps({ combinedStatus: posted() });
+    await runPrPolicy(makeTarget(), SHADOW_CONFIG, 'd-1', deps);
+    expect(ops(deps)).toEqual(['gatherFacts', 'evaluatePolicy']);
+  });
+
+  it('posts again when one per-check status differs', async () => {
+    const deps = makeGateDeps({ combinedStatus: posted({ 'pr-policy (app) / uat': 'Waiting' }) });
+    await runPrPolicy(makeTarget(), SHADOW_CONFIG, 'd-1', deps);
+    expect(ops(deps)).toContain('postVerdict');
+  });
+
+  it('logs whether it posted', async () => {
+    const deps = makeGateDeps({ combinedStatus: posted() });
+    await runPrPolicy(makeTarget(), SHADOW_CONFIG, 'd-1', deps);
+    expect(deps.log.entries.at(-1)?.fields['posted']).toBe(false);
+  });
+
+  it("reads the head's combined status once", async () => {
+    const deps = makeGateDeps({ combinedStatus: posted() });
+    await runPrPolicy(makeTarget(), SHADOW_CONFIG, 'd-1', deps);
+    expect(deps.calls.filter(({ op }) => op === 'getJson').map(({ args }) => args)).toEqual([
+      ['repos/rmartz/firebase-nextjs-template/commits/head1/status?per_page=100'],
+    ]);
   });
 });
 

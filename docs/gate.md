@@ -146,6 +146,16 @@ Before these limits, every completed workflow on `main` (including the
 `status`-started ones) fanned out to every open PR at 62 calls for 5 PRs, and a
 repeat cost the same again.
 
+**pr-policy re-evaluations that change nothing write nothing.** A pr-policy
+evaluation measured 25–33 calls live, and about ten of those are writes: the
+verdict's check-run and status, plus one status per check. Most re-evaluations
+repeat the last verdict, because the actor re-posts an unchanged
+`pr-lifecycle/sign-off` status on every reconcile, several per PR change. So
+the gate reads the head's combined status first (one call,
+[`src/pr-policy-statuses.ts`](../src/pr-policy-statuses.ts)) and skips every
+write when the verdict and each per-check status are already the latest of their
+context. Its `evaluated` log says whether it `posted`.
+
 **Out of budget, the gate posts nothing.** Below `RATE_LIMIT_FLOOR` (500
 remaining), or after a rate-limit response (429, or 403 with nothing left), it
 skips the evaluation or fan-out and logs the skip
