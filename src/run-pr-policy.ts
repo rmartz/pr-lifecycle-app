@@ -12,6 +12,7 @@ import { checkStatuses, ciRetitle, PR_POLICY_CHECK_NAME, selectChecks } from '@r
 import type { EventTarget } from './events.js';
 import type { MintToken } from './installation-token.js';
 import type { LogFields, Logger } from './logger.js';
+import type { RequestFailure } from './rate-limit.js';
 import type { ActiveToolConfig, PrPolicyPolicy } from './repos.js';
 
 /** pr-policy's settings for a repo it acts on. */
@@ -60,6 +61,8 @@ export interface PrPolicyDeps {
   readonly mintToken: MintToken;
   readonly createClient: (token: string) => GitHubClient;
   readonly policy: PolicyIo;
+  /** The client's latest failed response (status and path), for logging a failed read. */
+  readonly lastFailure: () => RequestFailure | undefined;
   readonly log: Logger;
 }
 
@@ -99,6 +102,7 @@ export async function runPrPolicy(
     deps.log.error('could not prepare the pr-policy evaluation', {
       ...context,
       error: describe(error),
+      failure: deps.lastFailure() ?? null,
     });
     return;
   }
@@ -112,7 +116,12 @@ export async function runPrPolicy(
     try {
       await evaluateOne(pullRequest, checks, config, { ...context, pr }, deps);
     } catch (error) {
-      deps.log.error('pr-policy evaluation failed', { ...context, pr, error: describe(error) });
+      deps.log.error('pr-policy evaluation failed', {
+        ...context,
+        pr,
+        error: describe(error),
+        failure: deps.lastFailure() ?? null,
+      });
     }
   }
 }

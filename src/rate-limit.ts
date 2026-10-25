@@ -8,13 +8,36 @@ export interface RateLimitMeter {
   readonly fetch: typeof fetch;
   /** The latest remaining count seen, or undefined before any response carried one. */
   readonly remaining: () => number | undefined;
+  /**
+   * The latest response that wasn't OK: its status and API path (no query, no
+   * token), so a failed read can be logged with why it failed.
+   */
+  readonly lastFailure: () => RequestFailure | undefined;
+}
+
+export interface RequestFailure {
+  readonly status: number;
+  readonly path: string;
+}
+
+function pathOf(input: Parameters<typeof fetch>[0]): string {
+  const href = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+  try {
+    return new URL(href).pathname;
+  } catch {
+    return '';
+  }
 }
 
 export function createRateLimitMeter(base: typeof fetch = fetch): RateLimitMeter {
   let remaining: number | undefined;
+  let lastFailure: RequestFailure | undefined;
   return {
     fetch: async (input, init) => {
       const response = await base(input, init);
+      if (!response.ok) {
+        lastFailure = { status: response.status, path: pathOf(input) };
+      }
       const header = Number(response.headers.get('x-ratelimit-remaining') ?? Number.NaN);
       if (Number.isFinite(header)) {
         remaining = header;
@@ -22,6 +45,7 @@ export function createRateLimitMeter(base: typeof fetch = fetch): RateLimitMeter
       return response;
     },
     remaining: () => remaining,
+    lastFailure: () => lastFailure,
   };
 }
 

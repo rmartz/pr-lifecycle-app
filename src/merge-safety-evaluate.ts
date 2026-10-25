@@ -10,6 +10,7 @@ import type { GitHubClient } from '@rmartz/pr-policy';
 import type { MintToken } from './installation-token.js';
 import type { LogFields, Logger } from './logger.js';
 import { baseChecksProbe, postCheck, readPr, requiredChecksProbe } from './merge-safety-io.js';
+import type { RequestFailure } from './rate-limit.js';
 import type { ActiveToolConfig, MergeSafetyPolicy } from './repos.js';
 
 /**
@@ -37,6 +38,8 @@ export interface MergeSafetyDeps {
   readonly createClient: (token: string) => GitHubClient;
   /** The latest `x-ratelimit-remaining` the client saw. */
   readonly rateLimitRemaining: () => number | undefined;
+  /** The client's latest failed response (status and path), for logging a failed read. */
+  readonly lastFailure: () => RequestFailure | undefined;
   readonly sleep: (ms: number) => Promise<void>;
   readonly now: () => Date;
   readonly log: Logger;
@@ -63,7 +66,10 @@ export async function evaluateOne(run: Run, pr: number): Promise<void> {
   try {
     const view = await readPr(client, repo, pr, deps.sleep);
     if (view === undefined) {
-      deps.log.error('could not read the pull request', context);
+      deps.log.error('could not read the pull request', {
+        ...context,
+        failure: deps.lastFailure() ?? null,
+      });
       return;
     }
     if (view.state !== 'OPEN') {
@@ -105,7 +111,11 @@ export async function evaluateOne(run: Run, pr: number): Promise<void> {
       rateLimitRemaining: deps.rateLimitRemaining() ?? null,
     });
   } catch (error) {
-    deps.log.error('merge-safety evaluation failed', { ...context, error: describe(error) });
+    deps.log.error('merge-safety evaluation failed', {
+      ...context,
+      error: describe(error),
+      failure: deps.lastFailure() ?? null,
+    });
   }
 }
 

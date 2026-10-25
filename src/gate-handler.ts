@@ -76,6 +76,7 @@ function mergeSafetyOutcome(
         work: runMergeSafetyInvalidate(
           decision.repository,
           decision.baseBranch,
+          decision.tipSha,
           config,
           deliveryId,
           deps,

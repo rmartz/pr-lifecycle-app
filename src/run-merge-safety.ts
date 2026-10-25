@@ -45,7 +45,11 @@ export async function runMergeSafetyEvaluate(
   try {
     await evaluateTargets(run, target);
   } catch (error) {
-    deps.log.error('merge-safety run failed', { ...run.context, error: describe(error) });
+    deps.log.error('merge-safety run failed', {
+      ...run.context,
+      error: describe(error),
+      failure: deps.lastFailure() ?? null,
+    });
   }
 }
 
@@ -68,6 +72,7 @@ async function evaluateTargets(run: Run, target: EventTarget): Promise<void> {
 export async function runMergeSafetyInvalidate(
   repository: EventRepository,
   baseBranch: string,
+  tipSha: string | undefined,
   config: MergeSafetyConfig,
   deliveryId: string,
   deps: MergeSafetyDeps,
@@ -75,21 +80,53 @@ export async function runMergeSafetyInvalidate(
   const run = await prepare(repository, config, deliveryId, deps);
   if (run === undefined) return;
   try {
-    await invalidate(run, baseBranch);
+    await invalidate(run, baseBranch, tipSha);
   } catch (error) {
     deps.log.error('merge-safety run failed', {
       ...run.context,
       baseBranch,
       error: describe(error),
+      failure: deps.lastFailure() ?? null,
     });
   }
 }
 
-async function invalidate(run: Run, baseBranch: string): Promise<void> {
+/** Whether `sha` is still the tip of `branch`; undefined when the branch can't be read. */
+async function isTip(run: Run, branch: string, sha: string): Promise<boolean | undefined> {
+  const out = (await run.client.getJson(
+    `repos/${run.repo}/branches/${encodeURIComponent(branch)}`,
+  )) as { commit: { sha: string } } | null;
+  return out === null ? undefined : out.commit.sha === sha;
+}
+
+async function invalidate(run: Run, baseBranch: string, tipSha: string | undefined): Promise<void> {
   const { config, deps } = run;
+  const context = { ...run.context, baseBranch };
+  if (tipSha !== undefined) {
+    const current = await isTip(run, baseBranch, tipSha);
+    if (current !== true) {
+      const fields = { ...context, tipSha, failure: deps.lastFailure() ?? null };
+      if (current === undefined) {
+        deps.log.error('could not read the base branch', fields);
+      } else {
+        deps.log.info('skipped a base CI run that is no longer the tip', fields);
+      }
+      return;
+    }
+  }
   const pulls = await openPullsOnBase(run.client, run.repo, baseBranch);
   if (pulls === undefined) {
-    deps.log.error('could not list the open PRs on the moved base', { ...run.context, baseBranch });
+    deps.log.error('could not list the open PRs on the moved base', {
+      ...context,
+      failure: deps.lastFailure() ?? null,
+    });
+    return;
+  }
+  if (belowFloor(deps)) {
+    deps.log.warn('skipped an invalidation at the rate-limit floor', {
+      ...context,
+      rateLimitRemaining: deps.rateLimitRemaining() ?? null,
+    });
     return;
   }
   const name = mergeSafetyName(config);
@@ -109,16 +146,14 @@ async function invalidate(run: Run, baseBranch: string): Promise<void> {
   }
   let stopped = false;
   await forEachBounded(pulls, config.policy.concurrency, async ({ number }) => {
-    const remaining = deps.rateLimitRemaining();
-    if (stopped || (remaining !== undefined && remaining < RATE_LIMIT_FLOOR)) {
+    if (stopped || belowFloor(deps)) {
       stopped = true;
       return;
     }
     await evaluateOne(run, number);
   });
   const fields = {
-    ...run.context,
-    baseBranch,
+    ...context,
     prs: pulls.length,
     rateLimitRemaining: deps.rateLimitRemaining() ?? null,
   };
@@ -127,6 +162,11 @@ async function invalidate(run: Run, baseBranch: string): Promise<void> {
   } else {
     deps.log.info('invalidated', fields);
   }
+}
+
+function belowFloor(deps: MergeSafetyDeps): boolean {
+  const remaining = deps.rateLimitRemaining();
+  return remaining !== undefined && remaining < RATE_LIMIT_FLOOR;
 }
 
 async function openPullsAtHead(run: Run, sha: string): Promise<number[] | undefined> {

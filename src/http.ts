@@ -75,6 +75,7 @@ export function gateDeps(config: ServerConfig, log: Logger): GateHandlerDeps {
     }),
     createClient: (token) => createFetchClient({ token, fetch: meter.fetch }),
     rateLimitRemaining: meter.remaining,
+    lastFailure: meter.lastFailure,
     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     now: () => new Date(),
     policy: {

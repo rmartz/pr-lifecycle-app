@@ -37,6 +37,12 @@ export type MergeSafetyDecision =
       readonly repository: EventRepository;
       /** The branch that moved; its open PRs are re-evaluated. */
       readonly baseBranch: string;
+      /**
+       * For a base CI run, the commit it ran on: the fan-out happens only while
+       * that commit is still the branch tip, so a stale or redelivered run costs
+       * one read, not a fan-out. Undefined for a push, which is the tip.
+       */
+      readonly tipSha: string | undefined;
     };
 
 export interface MergeSafetyDecideOptions {
@@ -81,20 +87,36 @@ function decidePush(payload: Payload, repository: EventRepository): MergeSafetyD
   if (ref === undefined || !ref.startsWith('refs/heads/') || payload['deleted'] === true) {
     return ignore('unhandled-action');
   }
-  return { kind: 'invalidate', repository, baseBranch: ref.slice('refs/heads/'.length) };
+  return {
+    kind: 'invalidate',
+    repository,
+    baseBranch: ref.slice('refs/heads/'.length),
+    tipSha: undefined,
+  };
 }
 
-/** The default branch's CI completing can flip base health, so its PRs re-evaluate. */
+/**
+ * The default branch's CI completing can flip base health, so its PRs
+ * re-evaluate. Only a run a push started counts as the base's CI. A workflow
+ * started by any other event (`status`, `workflow_dispatch`, a schedule) also
+ * reports the default branch as its head branch, and following those would loop:
+ * the gate's own pending statuses start `status` workflows, whose completions
+ * would invalidate again.
+ */
 function decideWorkflowRun(payload: Payload, repository: EventRepository): MergeSafetyDecision {
   if (stringAt(payload, 'action') !== 'completed') {
     return ignore('unhandled-action');
   }
-  const branch = stringAt(objectAt(payload, 'workflow_run'), 'head_branch');
+  const run = objectAt(payload, 'workflow_run');
+  const branch = stringAt(run, 'head_branch');
   const defaultBranch = stringAt(objectAt(payload, 'repository'), 'default_branch');
-  if (branch === undefined || branch !== defaultBranch) {
+  if (branch === undefined || branch !== defaultBranch || stringAt(run, 'event') !== 'push') {
     return ignore('unhandled-action');
   }
-  return { kind: 'invalidate', repository, baseBranch: branch };
+  const tipSha = stringAt(run, 'head_sha');
+  return tipSha === undefined
+    ? ignore('malformed-payload')
+    : { kind: 'invalidate', repository, baseBranch: branch, tipSha };
 }
 
 /** A Re-run of the gate's own merge-safety check-run re-evaluates its PRs. */
