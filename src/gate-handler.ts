@@ -1,4 +1,5 @@
 import { MERGE_SAFETY_CHECK_NAME } from '@rmartz/merge-safety';
+import { PR_POLICY_CHECK_NAME } from '@rmartz/pr-policy';
 import type { IgnoreReason } from './events.js';
 import { decideGateEvent } from './gate-events.js';
 import type { WebhookRequest, WebhookResponse } from './handler.js';
@@ -10,7 +11,7 @@ import type { MergeSafetyConfig, MergeSafetyDeps } from './merge-safety-evaluate
 import { MERGE_SAFETY_SHADOW_NAME } from './merge-safety-evaluate.js';
 import { runMergeSafetyEvaluate, runMergeSafetyInvalidate } from './run-merge-safety.js';
 import type { PrPolicyConfig, PrPolicyDeps } from './run-pr-policy.js';
-import { runPrPolicy } from './run-pr-policy.js';
+import { PR_POLICY_SHADOW_NAME, runPrPolicy } from './run-pr-policy.js';
 
 export interface GateHandlerDeps extends PrPolicyDeps, MergeSafetyDeps {
   readonly webhookSecret: string;
@@ -38,6 +39,7 @@ function prPolicyOutcome(
 ): ToolOutcome {
   const decision = decideGateEvent(eventName, payload, {
     botLogin: deps.botLogin,
+    checkNames: [PR_POLICY_CHECK_NAME, PR_POLICY_SHADOW_NAME],
     isEnabled: (fullName) => deps.prPolicyConfig(fullName) !== undefined,
   });
   if (decision.kind === 'ignore') return ignored(decision.reason);

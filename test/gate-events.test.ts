@@ -1,11 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import type { GateDecideOptions } from '../src/gate-events.js';
 import { decideGateEvent } from '../src/gate-events.js';
-import { makeCheckSuiteEvent, makePullRequestEvent, makeRepository } from './fixtures.js';
+import {
+  INSTALLATION_ID,
+  makeCheckSuiteEvent,
+  makePullRef,
+  makePullRequestEvent,
+  makeRepository,
+} from './fixtures.js';
 import { GATE_BOT, makeStatusEvent } from './gate-fixtures.js';
 
 const OPTIONS: GateDecideOptions = {
   botLogin: GATE_BOT,
+  checkNames: ['pr-policy', 'pr-policy (app)'],
   isEnabled: (fullName) => fullName === 'rmartz/firebase-nextjs-template',
 };
 
@@ -112,6 +119,42 @@ describe('decideGateEvent: scope', () => {
       target: {
         repository: { installationId: 777, fullName: 'rmartz/firebase-nextjs-template' },
       },
+    });
+  });
+});
+
+describe('decideGateEvent: Re-run', () => {
+  const makeRerun = (run = {}, overrides = {}) => ({
+    installation: { id: INSTALLATION_ID },
+    repository: makeRepository(),
+    sender: { login: 'rmartz' },
+    action: 'rerequested',
+    check_run: {
+      name: 'pr-policy (app)',
+      head_sha: 'abc123',
+      pull_requests: [makePullRef(37)],
+      ...run,
+    },
+    ...overrides,
+  });
+
+  it("re-evaluates the PRs a Re-run of the gate's pr-policy check names", () => {
+    expect(decideGateEvent('check_run', makeRerun(), OPTIONS)).toMatchObject({
+      kind: 'evaluate',
+      target: { prs: [37] },
+    });
+  });
+
+  it("ignores a Re-run of merge-safety's check", () => {
+    const event = makeRerun({ name: 'merge-safety (app)' });
+    expect(decideGateEvent('check_run', event, OPTIONS).kind).toBe('ignore');
+  });
+
+  it("ignores the gate's own check-run being created", () => {
+    const event = makeRerun({}, { action: 'created' });
+    expect(decideGateEvent('check_run', event, OPTIONS)).toEqual({
+      kind: 'ignore',
+      reason: 'unhandled-action',
     });
   });
 });
