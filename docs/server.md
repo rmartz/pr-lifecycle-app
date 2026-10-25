@@ -104,10 +104,19 @@ open PRs.
 | -------------- | --------------------------------------------------------- | ------------------------------------------------------- |
 | `pull_request` | opened, synchronize, reopened, edited, labeled, unlabeled | evaluates the PR                                        |
 | `push`         | to a branch (not a tag, not a deletion)                   | invalidates the open PRs based on that branch           |
-| `workflow_run` | completed, on the default branch                          | invalidates the default branch's open PRs (base health) |
+| `workflow_run` | completed, on the default branch, started by a `push`     | invalidates the default branch's open PRs (base health) |
 | `check_run`    | `rerequested` on `merge-safety` or `merge-safety (app)`   | re-evaluates its PRs: the native **Re-run** button      |
 
 The gate's own `labeled`/`unlabeled`/`edited` events are skipped.
+
+**Only a push-started run is the base's CI.** A workflow started by any other
+event also reports the default branch as its head branch. That includes the
+`status`-triggered `pr-policy.yml`, which runs on every commit status. Following
+those runs loops: each invalidation posts pending statuses, which start
+`status` workflows, whose completions would invalidate again. On the template
+that multiplied the deliveries until the gate's installation ran out of rate
+limit. A base CI run also fans out only while its commit is still the branch
+tip, so a stale or redelivered run costs one read.
 
 **Evaluate.** Read the PR, re-reading while GitHub computes `mergeable`, and
 skip it unless it is open. Gather the facts and take the library's verdict, or
@@ -117,7 +126,8 @@ of the name in place, mirrored to a commit status. Live, also reconcile
 
 **Invalidate** replaces the workflow's per-PR `workflow_dispatch` fan-out:
 
-1. List the open PRs on the moved branch.
+1. List the open PRs on the moved branch. If the installation is already below
+   the rate-limit floor, stop here and mark nothing.
 2. Mark every one pending (`Re-evaluating`) first, which holds its merge.
 3. Re-evaluate them in place, at most `concurrency` at a time (the repo's
    `mergeSafety` policy, 4 on the template).
@@ -127,6 +137,10 @@ well inside the function's 300 s. Each response's `x-ratelimit-remaining` is
 recorded ([`src/rate-limit.ts`](../src/rate-limit.ts)) and logged. Below
 `RATE_LIMIT_FLOOR` (500) the fan-out stops: the PRs it didn't reach keep their
 pending mark, so they stay held until the next base event or a Re-run.
+
+A failed read is logged with the last failed response's status and API path
+(`failure`, never a token or query), so a rate limit (403/429) can be told apart
+from a missing permission or installation (403/404).
 
 **Shadow vs live.** Shadow posts `merge-safety (app)` and writes no labels;
 live posts `merge-safety` and reconciles them. The cutover is the same as

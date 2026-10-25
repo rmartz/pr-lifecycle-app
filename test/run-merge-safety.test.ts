@@ -177,7 +177,14 @@ describe('runMergeSafetyInvalidate', () => {
 
   it('marks every open PR on the moved base pending before evaluating any', async () => {
     const client = twoPrs();
-    await runMergeSafetyInvalidate(REPOSITORY, 'main', MS_SHADOW, 'd-1', makeGateDeps({ client }));
+    await runMergeSafetyInvalidate(
+      REPOSITORY,
+      'main',
+      undefined,
+      MS_SHADOW,
+      'd-1',
+      makeGateDeps({ client }),
+    );
     expect(checkRunPosts(client).map(({ body }) => (body as { status: string }).status)).toEqual([
       'in_progress',
       'in_progress',
@@ -189,7 +196,7 @@ describe('runMergeSafetyInvalidate', () => {
   it('re-evaluates every PR in place when the budget allows', async () => {
     const client = twoPrs();
     const deps = makeGateDeps({ client });
-    await runMergeSafetyInvalidate(REPOSITORY, 'main', MS_SHADOW, 'd-1', deps);
+    await runMergeSafetyInvalidate(REPOSITORY, 'main', undefined, MS_SHADOW, 'd-1', deps);
     expect(deps.log.entries.at(-1)).toMatchObject({
       message: 'invalidated',
       fields: { baseBranch: 'main', prs: 2, rateLimitRemaining: 4321 },
@@ -202,7 +209,7 @@ describe('runMergeSafetyInvalidate', () => {
       client,
       overrides: { rateLimitRemaining: () => RATE_LIMIT_FLOOR - 1 },
     });
-    await runMergeSafetyInvalidate(REPOSITORY, 'main', MS_SHADOW, 'd-1', deps);
+    await runMergeSafetyInvalidate(REPOSITORY, 'main', undefined, MS_SHADOW, 'd-1', deps);
     expect([
       checkRunPosts(client).filter(
         ({ body }) => (body as { status: string }).status === 'completed',
@@ -227,18 +234,88 @@ describe('runMergeSafetyInvalidate', () => {
       inFlight -= 1;
       return out;
     };
-    await runMergeSafetyInvalidate(REPOSITORY, 'main', MS_SHADOW, 'd-1', makeGateDeps({ client }));
+    await runMergeSafetyInvalidate(
+      REPOSITORY,
+      'main',
+      undefined,
+      MS_SHADOW,
+      'd-1',
+      makeGateDeps({ client }),
+    );
     expect(peak).toBeLessThanOrEqual(MS_SHADOW.policy.concurrency);
   });
 
   it('logs and stops when the open PRs cannot be listed', async () => {
     const client = makeFakeClient({});
     const deps = makeGateDeps({ client });
-    await runMergeSafetyInvalidate(REPOSITORY, 'main', MS_SHADOW, 'd-1', deps);
+    await runMergeSafetyInvalidate(REPOSITORY, 'main', undefined, MS_SHADOW, 'd-1', deps);
     expect([client.writes, deps.log.entries.at(-1)?.message]).toEqual([
       [],
       'could not list the open PRs on the moved base',
     ]);
+  });
+
+  it('logs the failed response status with a failed listing', async () => {
+    const deps = makeGateDeps({ client: makeFakeClient({}) });
+    await runMergeSafetyInvalidate(REPOSITORY, 'main', undefined, MS_SHADOW, 'd-1', deps);
+    expect(deps.log.entries.at(-1)?.fields['failure']).toEqual({
+      status: 403,
+      path: '/repos/rmartz/firebase-nextjs-template/pulls',
+    });
+  });
+
+  it('marks nothing pending when already below the rate-limit floor', async () => {
+    const client = twoPrs();
+    const deps = makeGateDeps({
+      client,
+      overrides: { rateLimitRemaining: () => RATE_LIMIT_FLOOR - 1 },
+    });
+    await runMergeSafetyInvalidate(REPOSITORY, 'main', undefined, MS_SHADOW, 'd-1', deps);
+    expect(checkRunPosts(client)).toEqual([]);
+  });
+});
+
+describe('runMergeSafetyInvalidate: base CI runs', () => {
+  const withTip = (tip: string) =>
+    makeFakeClient({
+      ...makeMergeSafetyRoutes({ pr: 31, head: 'head1', tip }),
+      [`repos/${REPO}/pulls?state=open&base=main&per_page=100`]: [
+        { number: 31, head: { sha: 'head1' } },
+      ],
+    });
+
+  it("fans out for a base CI run on the branch's current tip", async () => {
+    const client = withTip('tip1');
+    await runMergeSafetyInvalidate(
+      REPOSITORY,
+      'main',
+      'tip1',
+      MS_SHADOW,
+      'd-1',
+      makeGateDeps({ client }),
+    );
+    expect(checkRunPosts(client).length).toBeGreaterThan(0);
+  });
+
+  it('skips a stale or redelivered base CI run with one read and no writes', async () => {
+    const client = withTip('tip2');
+    const deps = makeGateDeps({ client });
+    await runMergeSafetyInvalidate(REPOSITORY, 'main', 'tip1', MS_SHADOW, 'd-1', deps);
+    expect([client.writes, client.reads, deps.log.entries.at(-1)?.message]).toEqual([
+      [],
+      [`repos/${REPO}/branches/main`],
+      'skipped a base CI run that is no longer the tip',
+    ]);
+  });
+
+  it('logs an unreadable base branch with the failed response', async () => {
+    const client = makeFakeClient({});
+    const deps = makeGateDeps({ client });
+    await runMergeSafetyInvalidate(REPOSITORY, 'main', 'tip1', MS_SHADOW, 'd-1', deps);
+    expect(deps.log.entries.at(-1)).toMatchObject({
+      message: 'could not read the base branch',
+      fields: { failure: { status: 403 } },
+    });
   });
 });
 
@@ -251,7 +328,7 @@ describe('merge-safety runs never throw', () => {
 
   it('logs an invalidation whose PR listing throws', async () => {
     const deps = makeGateDeps({ client: throwing() });
-    await runMergeSafetyInvalidate(REPOSITORY, 'main', MS_SHADOW, 'd-1', deps);
+    await runMergeSafetyInvalidate(REPOSITORY, 'main', undefined, MS_SHADOW, 'd-1', deps);
     expect(deps.log.entries.at(-1)).toMatchObject({
       level: 'error',
       message: 'merge-safety run failed',

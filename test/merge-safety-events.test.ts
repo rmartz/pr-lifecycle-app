@@ -77,6 +77,7 @@ describe('decideMergeSafetyEvent: base moves', () => {
     expect(decideMergeSafetyEvent('push', makePushEvent(), OPTIONS)).toMatchObject({
       kind: 'invalidate',
       baseBranch: 'main',
+      tipSha: undefined,
       repository: { fullName: 'rmartz/firebase-nextjs-template' },
     });
   });
@@ -100,18 +101,41 @@ describe('decideMergeSafetyEvent: base moves', () => {
 
   it("invalidates the default branch's PRs when its CI completes", () => {
     const event = makeWorkflowRunEvent(
-      { head_branch: 'main' },
+      { head_branch: 'main', event: 'push', head_sha: 'tip9' },
       { repository: makeRepository({ default_branch: 'main' }) },
     );
     expect(decideMergeSafetyEvent('workflow_run', event, OPTIONS)).toMatchObject({
       kind: 'invalidate',
       baseBranch: 'main',
+      tipSha: 'tip9',
+    });
+  });
+
+  it("ignores a default-branch run a status started, which would loop on the gate's own statuses", () => {
+    const event = makeWorkflowRunEvent(
+      { head_branch: 'main', event: 'status' },
+      { repository: makeRepository({ default_branch: 'main' }) },
+    );
+    expect(decideMergeSafetyEvent('workflow_run', event, OPTIONS)).toEqual({
+      kind: 'ignore',
+      reason: 'unhandled-action',
+    });
+  });
+
+  it('rejects a base CI run with no head commit as malformed', () => {
+    const event = makeWorkflowRunEvent(
+      { head_branch: 'main', event: 'push', head_sha: undefined },
+      { repository: makeRepository({ default_branch: 'main' }) },
+    );
+    expect(decideMergeSafetyEvent('workflow_run', event, OPTIONS)).toEqual({
+      kind: 'ignore',
+      reason: 'malformed-payload',
     });
   });
 
   it('ignores CI completing on a PR branch', () => {
     const event = makeWorkflowRunEvent(
-      { head_branch: 'feature/x' },
+      { head_branch: 'feature/x', event: 'push' },
       { repository: makeRepository({ default_branch: 'main' }) },
     );
     expect(decideMergeSafetyEvent('workflow_run', event, OPTIONS).kind).toBe('ignore');
@@ -119,7 +143,7 @@ describe('decideMergeSafetyEvent: base moves', () => {
 
   it('ignores a CI run that has not completed', () => {
     const event = makeWorkflowRunEvent(
-      { head_branch: 'main' },
+      { head_branch: 'main', event: 'push' },
       { action: 'requested', repository: makeRepository({ default_branch: 'main' }) },
     );
     expect(decideMergeSafetyEvent('workflow_run', event, OPTIONS).kind).toBe('ignore');

@@ -35,6 +35,26 @@ describe('createRateLimitMeter', () => {
   });
 });
 
+describe('createRateLimitMeter: failures', () => {
+  it('records the status and path of a failed response, never the query', async () => {
+    const meter = createRateLimitMeter(() => Promise.resolve(new Response('{}', { status: 403 })));
+    await meter.fetch('https://api.github.com/repos/o/r/pulls?state=open');
+    expect(meter.lastFailure()).toEqual({ status: 403, path: '/repos/o/r/pulls' });
+  });
+
+  it('records no failure for a successful response', async () => {
+    const meter = createRateLimitMeter(respondingWith({}));
+    await meter.fetch('https://api.github.com/repos/o/r');
+    expect(meter.lastFailure()).toBeUndefined();
+  });
+
+  it('records a failure for a Request input too', async () => {
+    const meter = createRateLimitMeter(() => Promise.resolve(new Response('', { status: 404 })));
+    await meter.fetch(new Request('https://api.github.com/repos/o/r/pulls/9'));
+    expect(meter.lastFailure()?.path).toBe('/repos/o/r/pulls/9');
+  });
+});
+
 describe('forEachBounded', () => {
   it('visits every item', async () => {
     const seen: number[] = [];
