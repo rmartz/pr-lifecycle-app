@@ -168,9 +168,9 @@ describe('gateDeps', () => {
     expect(deps.prPolicyConfig('rmartz/personal-budget')).toBeUndefined();
   });
 
-  it('shadows merge-safety on the proof-of-concept repository', () => {
+  it('runs merge-safety live on the proof-of-concept repository', () => {
     const deps = gateDeps(GATE_CONFIG, makeLogger());
-    expect(deps.mergeSafetyConfig('rmartz/firebase-nextjs-template')?.mode).toBe('shadow');
+    expect(deps.mergeSafetyConfig('rmartz/firebase-nextjs-template')?.mode).toBe('live');
   });
 
   it('knows no rate limit before the client has made a request', () => {

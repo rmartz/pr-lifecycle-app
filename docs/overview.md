@@ -67,6 +67,6 @@ The server is growing into the fleet's PR server (epic
 from two Vercel projects: the **actor** (`rmartz-pr-lifecycle`) and a **gate**
 App that posts the `pr-policy` and `merge-safety` checks; see
 [Roles](server.md#roles-actor-and-gate). On the template the gate App posts the
-required `pr-policy` check live, replacing `pr-policy.yml`, and runs merge-safety
-in shadow until its verdicts match the action's. Record each decision on a page
+required `pr-policy` and `merge-safety` checks live, replacing `pr-policy.yml`
+and `merge-safety.yml`. Record each decision on a page
 in this bundle when it is made.
