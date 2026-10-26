@@ -176,11 +176,12 @@ A tool left out of a repo's entry is `off`. Only `shadow` and `live` reach a
 run: the lookup returns nothing for `off`, so a delivery for that repo is
 acknowledged as `repo-not-enabled`. Each tool cuts over per repo on its own.
 
-| Repo                              | Tool         | Mode   | Policy                                                |
-| --------------------------------- | ------------ | ------ | ----------------------------------------------------- |
-| `rmartz/firebase-nextjs-template` | pr-lifecycle | `live` | `uat: on`, arming off                                 |
-| `rmartz/firebase-nextjs-template` | pr-policy    | `live` | UAT gate on, `requireUatLabel`, `retitleDependabotCi` |
-| `rmartz/firebase-nextjs-template` | merge-safety | `live` | `concurrency: 4`                                      |
+| Repo                              | Tool         | Mode     | Policy                                                |
+| --------------------------------- | ------------ | -------- | ----------------------------------------------------- |
+| `rmartz/firebase-nextjs-template` | pr-lifecycle | `live`   | `uat: on`, arming off                                 |
+| `rmartz/firebase-nextjs-template` | pr-policy    | `live`   | UAT gate on, `requireUatLabel`, `retitleDependabotCi` |
+| `rmartz/firebase-nextjs-template` | merge-safety | `live`   | `concurrency: 4`                                      |
+| `rmartz/group-picks`              | pr-lifecycle | `shadow` | `uat: on`, arming on, `autoUpdate`                    |
 
 ### Cutting a tool over on a repo
 
