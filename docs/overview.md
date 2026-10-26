@@ -52,7 +52,9 @@ only on the repos in its allowlist. The proof of concept is
 `rmartz/firebase-nextjs-template`, which the App reconciles **live**: the template
 no longer runs the action. It was cut over after a shadow (dry-run) period
 whose plans matched the action's. How it works: [The webhook server](server.md),
-including [cutting a repo over](server.md#repo-allowlist).
+including [cutting a repo over](server.md#repo-allowlist). The second repo,
+`rmartz/group-picks`, is in shadow; it is the first with arming and
+auto-update on, so its cutover is the App's first live merge-authorizing run.
 
 The design is tracked in
 [rmartz/pr-lifecycle#134](https://github.com/rmartz/pr-lifecycle/issues/134).

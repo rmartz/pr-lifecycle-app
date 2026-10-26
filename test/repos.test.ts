@@ -45,6 +45,21 @@ describe('toolConfig: the reviewed allowlist', () => {
     });
   });
 
+  it('shadows pr-lifecycle on group-picks with arming and auto-update on', () => {
+    expect(toolConfig('rmartz/group-picks', 'prLifecycle')).toEqual({
+      mode: 'shadow',
+      policy: { uat: 'on', armAutoMerge: true, autoUpdate: true },
+    });
+  });
+
+  it('leaves pr-policy off on group-picks', () => {
+    expect(toolConfig('rmartz/group-picks', 'prPolicy')).toBeUndefined();
+  });
+
+  it('leaves merge-safety off on group-picks', () => {
+    expect(toolConfig('rmartz/group-picks', 'mergeSafety')).toBeUndefined();
+  });
+
   it('leaves pr-policy off on every other repository', () => {
     expect(toolConfig('rmartz/personal-budget', 'prPolicy')).toBeUndefined();
   });
