@@ -88,8 +88,9 @@ export const REPOS: Readonly<Record<string, RepoConfig>> = {
         signOffStatusCreators: ['rmartz-pr-lifecycle[bot]'],
       },
     },
-    // Shadow: posted as `merge-safety (app)` beside the action's `merge-safety`.
-    mergeSafety: { mode: 'shadow', policy: { concurrency: 4 } },
+    // Live: the gate App posts the required `merge-safety` check, replacing the
+    // template's retired merge-safety.yml.
+    mergeSafety: { mode: 'live', policy: { concurrency: 4 } },
   },
 };
 

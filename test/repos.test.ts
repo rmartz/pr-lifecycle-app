@@ -38,9 +38,9 @@ describe('toolConfig: the reviewed allowlist', () => {
     });
   });
 
-  it('shadows merge-safety on the proof-of-concept repo with a bounded fan-out', () => {
+  it('runs merge-safety live on the proof-of-concept repo with a bounded fan-out', () => {
     expect(toolConfig('rmartz/firebase-nextjs-template', 'mergeSafety')).toEqual({
-      mode: 'shadow',
+      mode: 'live',
       policy: { concurrency: 4 },
     });
   });
