@@ -52,8 +52,12 @@ describe('toolConfig: the reviewed allowlist', () => {
     });
   });
 
-  it('leaves the gate tools off on group-picks', () => {
+  it('leaves pr-policy off on group-picks', () => {
     expect(toolConfig('rmartz/group-picks', 'prPolicy')).toBeUndefined();
+  });
+
+  it('leaves merge-safety off on group-picks', () => {
+    expect(toolConfig('rmartz/group-picks', 'mergeSafety')).toBeUndefined();
   });
 
   it('leaves pr-policy off on every other repository', () => {
