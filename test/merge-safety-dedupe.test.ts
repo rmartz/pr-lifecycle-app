@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { baseKey, branchTip, isCurrentVerdict } from '../src/merge-safety-dedupe.js';
+import {
+  baseKey,
+  branchTip,
+  isCurrentVerdict,
+  REEVALUATING_ID,
+} from '../src/merge-safety-dedupe.js';
 import { memoizeReads } from '../src/memo-client.js';
 import { makeFakeClient } from './fake-client.js';
 import { REPO } from './merge-safety-fixtures.js';
@@ -72,8 +77,16 @@ describe('isCurrentVerdict', () => {
     expect(await verdict({ status: 'completed', external_id: 'k0' })).toBe(false);
   });
 
-  it('is false for a pending run', async () => {
-    expect(await verdict({ status: 'in_progress', external_id: 'k1' })).toBe(false);
+  it('is true for a pending verdict computed against the key, such as Update required', async () => {
+    expect(await verdict({ status: 'in_progress', external_id: 'k1' })).toBe(true);
+  });
+
+  it("is false for an invalidation's Re-evaluating mark", async () => {
+    expect(await verdict({ status: 'in_progress', external_id: REEVALUATING_ID })).toBe(false);
+  });
+
+  it('is false for a run with no key', async () => {
+    expect(await verdict({ status: 'completed', external_id: null })).toBe(false);
   });
 
   it('is false when no run exists or it cannot be read', async () => {

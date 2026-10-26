@@ -32,7 +32,10 @@ const REPOSITORY: EventRepository = {
 
 const calls = (client: FakeClient) => client.reads.length + client.writes.length;
 
-function makeOpenPrs(count: number, options: { current?: boolean } = {}): FakeClient {
+function makeOpenPrs(
+  count: number,
+  options: { current?: boolean; baseMessage?: string } = {},
+): FakeClient {
   const routes: Record<string, unknown> = {};
   const pulls = [];
   for (let i = 0; i < count; i++) {
@@ -80,6 +83,16 @@ describe('API cost: merge-safety', () => {
 
   it('re-checks 5 PRs whose verdicts are current in 9 reads and no writes', async () => {
     const client = makeOpenPrs(5);
+    const deps = makeGateDeps({ client });
+    await runMergeSafetyInvalidate(REPOSITORY, 'main', 'tip1', MS_SHADOW, 'd-1', deps);
+    const first = calls(client);
+    const writes = client.writes.length;
+    await runMergeSafetyInvalidate(REPOSITORY, 'main', 'tip1', MS_SHADOW, 'd-2', deps);
+    expect([calls(client) - first, client.writes.length - writes]).toEqual([9, 0]);
+  });
+
+  it('re-checks 5 PRs whose current verdict is Update required in 9 reads and no writes', async () => {
+    const client = makeOpenPrs(5, { current: false, baseMessage: 'ci: change a workflow' });
     const deps = makeGateDeps({ client });
     await runMergeSafetyInvalidate(REPOSITORY, 'main', 'tip1', MS_SHADOW, 'd-1', deps);
     const first = calls(client);

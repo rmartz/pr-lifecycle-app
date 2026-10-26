@@ -115,9 +115,12 @@ workflow (four on the template), so the fan-out is built to be cheap to repeat:
 1. Read the base tip. A base CI run whose commit is no longer the tip stops
    here, after one read.
 2. Compute the base key, and list the open PRs on the branch.
-3. Keep only the PRs whose latest gate check-run isn't a completed verdict for
-   this key. A repeat for an unchanged base re-evaluates nothing.
-4. Mark those pending (`Re-evaluating`), which holds their merge, and
+3. Keep only the PRs whose latest gate check-run isn't a verdict for this key.
+   A pending verdict counts: `Update required` posts an in-progress run.
+   A repeat for an unchanged base re-evaluates nothing.
+4. Mark those pending (`Re-evaluating`, `external_id` `re-evaluating`, never a
+   key, so a mark a stopped fan-out leaves isn't read as a verdict), which
+   holds their merge, and
    re-evaluate them in place, at most `concurrency` at a time (the repo's
    `mergeSafety` policy, 4 on the template).
 
@@ -136,14 +139,15 @@ pr-policy's ([Cutting a tool over](server.md#cutting-a-tool-over-on-a-repo)).
 The gate has one hourly REST budget per installation, shared by every repo and
 both tools. Measured per delivery (`test/api-budget.test.ts` pins these):
 
-| Delivery                                              | Calls |
-| ----------------------------------------------------- | ----- |
-| merge-safety, one PR evaluation (base current)        | 9     |
-| merge-safety fan-out, 5 PRs with stale verdicts       | 54    |
-| merge-safety fan-out, 5 PRs with current verdicts     | 9     |
-| merge-safety, 5 PRs after a base check turns green    | 9     |
-| merge-safety, a stale base CI run                     | 1     |
-| a `status`-started workflow run; a non-`hotfix` label | 0     |
+| Delivery                                               | Calls |
+| ------------------------------------------------------ | ----- |
+| merge-safety, one PR evaluation (base current)         | 9     |
+| merge-safety fan-out, 5 PRs with stale verdicts        | 54    |
+| merge-safety fan-out, 5 PRs with current verdicts      | 9     |
+| merge-safety, 5 PRs whose verdict is `Update required` | 9     |
+| merge-safety, 5 PRs after a base check turns green     | 9     |
+| merge-safety, a stale base CI run                      | 1     |
+| a `status`-started workflow run; a non-`hotfix` label  | 0     |
 
 Before these limits, every completed workflow on `main` (including the
 `status`-started ones) fanned out to every open PR at 62 calls for 5 PRs, and a

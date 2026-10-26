@@ -1,7 +1,7 @@
 import type { EventRepository, EventTarget } from './events.js';
 import type { MergeSafetyConfig, MergeSafetyDeps, Run } from './merge-safety-evaluate.js';
 import { describe, evaluateOne, mergeSafetyName, starved } from './merge-safety-evaluate.js';
-import { baseKey, branchTip, isCurrentVerdict } from './merge-safety-dedupe.js';
+import { baseKey, branchTip, isCurrentVerdict, REEVALUATING_ID } from './merge-safety-dedupe.js';
 import { openPullsOnBase, postCheck } from './merge-safety-io.js';
 import { memoizeReads } from './memo-client.js';
 import { forEachBounded } from './rate-limit.js';
@@ -138,7 +138,7 @@ async function invalidate(run: Run, baseBranch: string, tipSha: string | undefin
         conclusion: 'pending',
         title: 'Re-evaluating',
         summary: 'Re-evaluating against the updated base…',
-        externalId: key,
+        externalId: REEVALUATING_ID,
       },
       deps.now(),
     );
