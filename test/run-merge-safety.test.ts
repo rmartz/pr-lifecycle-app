@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { EventRepository } from '../src/events.js';
+import { REEVALUATING_ID } from '../src/merge-safety-dedupe.js';
 import { mergeSafetyName } from '../src/merge-safety-evaluate.js';
 import { RATE_LIMIT_FLOOR } from '../src/rate-limit.js';
 import { runMergeSafetyEvaluate, runMergeSafetyInvalidate } from '../src/run-merge-safety.js';
@@ -190,6 +191,25 @@ describe('runMergeSafetyInvalidate', () => {
       'in_progress',
       'completed',
       'completed',
+    ]);
+  });
+
+  it('stamps the pending mark as Re-evaluating, never with the base key', async () => {
+    const client = twoPrs();
+    await runMergeSafetyInvalidate(
+      REPOSITORY,
+      'main',
+      undefined,
+      MS_SHADOW,
+      'd-1',
+      makeGateDeps({ client }),
+    );
+    const marks = checkRunPosts(client).filter(
+      ({ body }) => (body as { status: string }).status === 'in_progress',
+    );
+    expect(marks.map(({ body }) => (body as { external_id: string }).external_id)).toEqual([
+      REEVALUATING_ID,
+      REEVALUATING_ID,
     ]);
   });
 

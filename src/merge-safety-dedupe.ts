@@ -11,9 +11,15 @@ import { baseChecksProbe, requiredChecksProbe } from './merge-safety-io.js';
  * label) and on the base: its tip, and which of its checks base health counts as
  * failing. PR changes arrive as PR events, which always re-evaluate. The
  * base side is summed up as a **base key**, stored on the check-run as its
- * `external_id`. An invalidation skips every PR whose latest gate check-run is
- * completed with the current key: re-evaluating it would post the same verdict.
+ * `external_id`. An invalidation skips every PR whose latest gate check-run
+ * carries the current key: re-evaluating it would post the same verdict. That
+ * includes a pending verdict (`Update required` posts an in-progress run).
+ * The invalidation's own pending mark carries `REEVALUATING_ID` instead, so a
+ * PR left marked by a stopped fan-out is never mistaken for a verdict.
  */
+
+/** The `external_id` of an invalidation's `Re-evaluating` mark: never a base key. */
+export const REEVALUATING_ID = 're-evaluating';
 
 /**
  * The base key for `branch`: its tip SHA plus a digest of the base checks base
@@ -48,9 +54,9 @@ export async function branchTip(
 }
 
 /**
- * Whether the gate's latest `name` check-run on `headSha` is a completed verdict
- * computed against `key`. Any doubt (no run, still pending, unreadable) is false,
- * so the PR is re-evaluated.
+ * Whether the gate's latest `name` check-run on `headSha` is a verdict, completed
+ * or pending, computed against `key`. Any doubt (no run, an invalidation's mark,
+ * another key, unreadable) is false, so the PR is re-evaluated.
  */
 export async function isCurrentVerdict(
   client: GitHubClient,
@@ -63,6 +69,6 @@ export async function isCurrentVerdict(
     `repos/${repo}/commits/${headSha}/check-runs?check_name=${encodeURIComponent(name)}&filter=latest`,
     'check_runs',
   );
-  const latest = (runs ?? [])[0] as { status: string; external_id: string | null } | undefined;
-  return latest?.status === 'completed' && latest.external_id === key;
+  const latest = (runs ?? [])[0] as { external_id: string | null } | undefined;
+  return latest !== undefined && latest.external_id === key;
 }

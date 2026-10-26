@@ -28,16 +28,24 @@ export function makePull(overrides: PullOverrides = {}) {
 /**
  * The raw API responses merge-safety reads for one PR (`head`) against a base
  * whose tip is `tip`. `current` puts the PR's merge base at the tip; otherwise
- * the base has moved by one commit.
+ * the base has moved by one commit, titled `baseMessage` (a `ci:` one makes
+ * the verdict `Update required`).
  */
 export function makeMergeSafetyRoutes(
-  options: { pr?: number; head?: string; tip?: string; current?: boolean } = {},
+  options: {
+    pr?: number;
+    head?: string;
+    tip?: string;
+    current?: boolean;
+    baseMessage?: string;
+  } = {},
 ): Record<string, unknown> {
   const pr = options.pr ?? 31;
   const head = options.head ?? 'head1';
   const tip = options.tip ?? 'tip1';
   const mergeBase = options.current === false ? 'old1' : tip;
   const moved = options.current === false;
+  const baseMessage = options.baseMessage ?? 'docs: tweak';
   return {
     [`repos/${REPO}/pulls/${pr}`]: makePull({ head }),
     [`repos/${REPO}/branches/main`]: { commit: { sha: tip } },
@@ -45,7 +53,7 @@ export function makeMergeSafetyRoutes(
       merge_base_commit: { sha: mergeBase },
       total_commits: moved ? 1 : 0,
       commits: moved
-        ? [{ sha: tip, commit: { message: 'docs: tweak' }, parents: [{ sha: 'x' }] }]
+        ? [{ sha: tip, commit: { message: baseMessage }, parents: [{ sha: 'x' }] }]
         : [],
       ...(moved ? { files: [{ filename: 'README.md', changes: 1 }] } : {}),
     },
