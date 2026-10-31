@@ -84,7 +84,7 @@ jobs:
       cancel-in-progress: true
     steps:
       # The action resolves the PR from the event, including a dispatch's `pr`.
-      - uses: rmartz/pr-lifecycle-action@fb992db535de49efcbd9c7b4ba01428b3c134fbf # v4.4.2
+      - uses: rmartz/pr-lifecycle-action@675fe64a1c3f9a1fe474b19ab781b0c1347115cb # v4.4.3
         with:
           # The action creates its real-actor token from the rmartz-pr-lifecycle
           # App: it arms, merges, updates, and posts the pr-lifecycle/sign-off
