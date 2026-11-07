@@ -55,8 +55,8 @@
     "@rmartz/merge-safety": "0.17.0",
     "@rmartz/pr-lifecycle": "12.0.0",
     "@rmartz/pr-policy": "1.8.0",
-    "@vercel/functions": "3.10.3",
-    "@vercel/sandbox": "3.8.0",
+    "@vercel/functions": "3.10.6",
+    "@vercel/sandbox": "3.9.1",
     "universal-github-app-jwt": "2.2.2"
   }
 }
