@@ -53,8 +53,8 @@ only on the repos in its allowlist. The proof of concept is
 no longer runs the action. It was cut over after a shadow (dry-run) period
 whose plans matched the action's. How it works: [The webhook server](server.md),
 including [cutting a repo over](server.md#repo-allowlist). The second repo,
-`rmartz/group-picks`, is in shadow; it is the first with arming and
-auto-update on, so its cutover is the App's first live merge-authorizing run.
+`rmartz/group-picks`, is also reconciled **live**, and is the first with arming
+and auto-update on: there the App arms, merges and updates PRs.
 
 The design is tracked in
 [rmartz/pr-lifecycle#134](https://github.com/rmartz/pr-lifecycle/issues/134).

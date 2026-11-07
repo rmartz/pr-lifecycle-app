@@ -92,11 +92,11 @@ export const REPOS: Readonly<Record<string, RepoConfig>> = {
     // template's retired merge-safety.yml.
     mergeSafety: { mode: 'live', policy: { concurrency: 4 } },
   },
-  // The first repo with arming on: the inputs group-picks' pr-lifecycle.yml
-  // passes the action. Shadow: the action still writes; the App only logs plans.
+  // The first repo with arming on: the inputs group-picks' retired
+  // pr-lifecycle.yml passed the action. Live: the App arms, merges and updates.
   'rmartz/group-picks': {
     prLifecycle: {
-      mode: 'shadow',
+      mode: 'live',
       policy: { uat: 'on', armAutoMerge: true, autoUpdate: true },
     },
   },
