@@ -45,9 +45,9 @@ describe('toolConfig: the reviewed allowlist', () => {
     });
   });
 
-  it('shadows pr-lifecycle on group-picks with arming and auto-update on', () => {
+  it('runs pr-lifecycle live on group-picks with arming and auto-update on', () => {
     expect(toolConfig('rmartz/group-picks', 'prLifecycle')).toEqual({
-      mode: 'shadow',
+      mode: 'live',
       policy: { uat: 'on', armAutoMerge: true, autoUpdate: true },
     });
   });
