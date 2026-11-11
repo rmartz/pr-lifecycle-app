@@ -11,7 +11,7 @@ tags: [ci, tooling, dependabot, deploy, conventions]
 
 | Concern  | Tool                                                                  |
 | -------- | --------------------------------------------------------------------- |
-| Language | TypeScript 6, strict (`tsconfig.json` type-checks `src/` and `test/`) |
+| Language | TypeScript 7, strict (`tsconfig.json` type-checks `src/` and `test/`) |
 | Build    | `tsc` → ESM in `dist/` (`tsconfig.build.json`)                        |
 | Lint     | ESLint flat config, type-aware (`eslint.config.mjs`)                  |
 | Format   | Prettier (`.prettierrc.json`)                                         |
@@ -22,6 +22,16 @@ tags: [ci, tooling, dependabot, deploy, conventions]
 Node 24 runs CI and is the runtime the service targets (`engines`). The `tsc`
 build is CI's compile check. Vercel compiles the function in `api/` itself, along
 with the `src/` modules it imports.
+
+TypeScript 7 ships no programmatic API, and typescript-eslint needs one, so the
+two run side by side as the
+[TypeScript 7.0 announcement](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/#running-side-by-side-with-typescript-6.0)
+recommends. `@typescript/native` aliases `typescript@7`, whose `tsc` runs the
+`build` and `typecheck` scripts. `typescript` aliases `@typescript/typescript6`,
+which re-exports the TS 6 API (and installs only `tsc6`) for typescript-eslint and
+any other tool that imports `typescript`. Drop the shim once typescript-eslint
+supports the TS 7.1 API
+([typescript-eslint#10940](https://github.com/typescript-eslint/typescript-eslint/issues/10940)).
 
 This is a deployed service, not a published package, so it is `private` and every
 dependency is pinned **exactly** (`3.9.10`, no caret): each version change arrives
