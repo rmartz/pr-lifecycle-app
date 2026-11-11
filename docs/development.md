@@ -19,7 +19,9 @@ tags: [ci, tooling, dependabot, deploy, conventions]
 | Packages | pnpm (version pinned by `packageManager`)                             |
 | Hygiene  | `@rmartz/repo-hygiene` (CI action + pre-commit hook)                  |
 
-Node 24 runs CI and is the runtime the service targets (`engines`). The `tsc`
+Node 26 runs CI and is the runtime the service targets: `engines.node` is
+`26.x`, which overrides the Vercel project's Node setting. `@types/node` stays on
+the same major (see [Dependabot](#dependabot)). The `tsc`
 build is CI's compile check. Vercel compiles the function in `api/` itself, along
 with the `src/` modules it imports.
 
