@@ -47,14 +47,19 @@ merge-authorization bug. The [testing strategy](testing.md) is built around that
 
 ## Status and open design
 
-The server runs on **Vercel** as the existing `rmartz-pr-lifecycle` App. It acts
-only on the repos in its allowlist. The proof of concept is
-`rmartz/firebase-nextjs-template`, which the App reconciles **live**: the template
-no longer runs the action. It was cut over after a shadow (dry-run) period
-whose plans matched the action's. How it works: [The webhook server](server.md),
-including [cutting a repo over](server.md#repo-allowlist). The second repo,
-`rmartz/group-picks`, is also reconciled **live**, and is the first with arming
-and auto-update on: there the App arms, merges and updates PRs.
+**Shelved.** GitHub webhook traffic pushed the Vercel free tier past its Fast
+Origin Transfer quota (10 GB). So every tool is `off` in the
+[allowlist](server.md#repo-allowlist), and `rmartz/firebase-nextjs-template` and
+`rmartz/group-picks` run the `pr-lifecycle`, `pr-policy` and `merge-safety`
+actions from their own workflows again. A revival needs a host whose transfer
+cost fits the webhook volume.
+
+Before it was shelved, the server ran on **Vercel** as the existing
+`rmartz-pr-lifecycle` App. Both repos were cut over to it after a shadow
+(dry-run) period whose plans matched the action's. group-picks was the first
+repo with arming and auto-update on. How it works:
+[The webhook server](server.md), including
+[cutting a repo over](server.md#repo-allowlist).
 
 The design is tracked in
 [rmartz/pr-lifecycle#134](https://github.com/rmartz/pr-lifecycle/issues/134).
@@ -68,7 +73,5 @@ The server is growing into the fleet's PR server (epic
 [#5](https://github.com/rmartz/pr-lifecycle-app/issues/5)). It runs as two Apps
 from two Vercel projects: the **actor** (`rmartz-pr-lifecycle`) and a **gate**
 App that posts the `pr-policy` and `merge-safety` checks; see
-[Roles](server.md#roles-actor-and-gate). On the template the gate App posts the
-required `pr-policy` and `merge-safety` checks live, replacing `pr-policy.yml`
-and `merge-safety.yml`. Record each decision on a page
+[Roles](server.md#roles-actor-and-gate). Record each decision on a page
 in this bundle when it is made.

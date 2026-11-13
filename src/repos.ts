@@ -71,16 +71,15 @@ export type RepoConfig = { readonly [Tool in ToolName]?: ToolConfig<ToolPolicies
  * is listed here with a mode other than `off`. Config lives in code so enabling
  * a repo is a reviewed change, never a file read from a PR head.
  */
+// Shelved: every tool is `off` and the repos run their actions again, because
+// GitHub webhook traffic exceeded the Vercel free tier's Fast Origin Transfer
+// quota. The policies stay as the inputs each repo's workflow passes its action.
 export const REPOS: Readonly<Record<string, RepoConfig>> = {
-  // The proof of concept (rmartz/pr-lifecycle#134). Matches the inputs the
-  // template's retired pr-lifecycle.yml passed the action: UAT on, arming off.
-  // Live: the template no longer runs the action.
+  // The proof of concept (rmartz/pr-lifecycle#134): UAT on, arming off.
   'rmartz/firebase-nextjs-template': {
-    prLifecycle: { mode: 'live', policy: { uat: 'on', armAutoMerge: false } },
-    // The inputs the template's retired pr-policy.yml passed the action. Live:
-    // the gate App posts the required `pr-policy` check.
+    prLifecycle: { mode: 'off', policy: { uat: 'on', armAutoMerge: false } },
     prPolicy: {
-      mode: 'live',
+      mode: 'off',
       policy: {
         skipUat: false,
         requireUatLabel: true,
@@ -88,15 +87,12 @@ export const REPOS: Readonly<Record<string, RepoConfig>> = {
         signOffStatusCreators: ['rmartz-pr-lifecycle[bot]'],
       },
     },
-    // Live: the gate App posts the required `merge-safety` check, replacing the
-    // template's retired merge-safety.yml.
-    mergeSafety: { mode: 'live', policy: { concurrency: 4 } },
+    mergeSafety: { mode: 'off', policy: { concurrency: 4 } },
   },
-  // The first repo with arming on: the inputs group-picks' retired
-  // pr-lifecycle.yml passed the action. Live: the App arms, merges and updates.
+  // Arming and auto-update on.
   'rmartz/group-picks': {
     prLifecycle: {
-      mode: 'live',
+      mode: 'off',
       policy: { uat: 'on', armAutoMerge: true, autoUpdate: true },
     },
   },
