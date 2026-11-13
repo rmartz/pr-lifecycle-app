@@ -13,9 +13,9 @@ in-repo workflow keep using
 [`rmartz/pr-lifecycle-action`](https://github.com/rmartz/pr-lifecycle-action); a
 repo runs one or the other, never both.
 
-> **Status:** proof of concept. The server reconciles
-> `rmartz/firebase-nextjs-template` only, live; see
-> [docs/server.md](docs/server.md) and
+> **Status:** shelved. Every repo is `off` and runs the actions again, because
+> webhook traffic exceeded the Vercel free tier's transfer quota; see
+> [docs/overview.md](docs/overview.md#status-and-open-design) and
 > [rmartz/pr-lifecycle#134](https://github.com/rmartz/pr-lifecycle/issues/134).
 
 ## Documentation
