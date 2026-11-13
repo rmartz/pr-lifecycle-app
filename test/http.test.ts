@@ -158,9 +158,9 @@ describe('gateDeps', () => {
     expect([deps.webhookSecret, deps.botLogin]).toEqual(['s', 'rmartz-pr-gate[bot]']);
   });
 
-  it('runs pr-policy live on the proof-of-concept repository', () => {
+  it('leaves pr-policy off on the shelved proof-of-concept repository', () => {
     const deps = gateDeps(GATE_CONFIG, makeLogger());
-    expect(deps.prPolicyConfig('rmartz/firebase-nextjs-template')?.mode).toBe('live');
+    expect(deps.prPolicyConfig('rmartz/firebase-nextjs-template')).toBeUndefined();
   });
 
   it('leaves pr-policy off everywhere else', () => {
@@ -168,9 +168,9 @@ describe('gateDeps', () => {
     expect(deps.prPolicyConfig('rmartz/personal-budget')).toBeUndefined();
   });
 
-  it('runs merge-safety live on the proof-of-concept repository', () => {
+  it('leaves merge-safety off on the shelved proof-of-concept repository', () => {
     const deps = gateDeps(GATE_CONFIG, makeLogger());
-    expect(deps.mergeSafetyConfig('rmartz/firebase-nextjs-template')?.mode).toBe('live');
+    expect(deps.mergeSafetyConfig('rmartz/firebase-nextjs-template')).toBeUndefined();
   });
 
   it('knows no rate limit before the client has made a request', () => {
@@ -192,9 +192,9 @@ describe('productionDeps', () => {
     expect([deps.webhookSecret, deps.botLogin]).toEqual(['s', 'b[bot]']);
   });
 
-  it('enables the proof-of-concept repository', () => {
+  it('leaves pr-lifecycle off on the shelved proof-of-concept repository', () => {
     const deps = productionDeps(CONFIG, makeLogger());
-    expect(deps.prLifecycleConfig('rmartz/firebase-nextjs-template')?.mode).toBe('live');
+    expect(deps.prLifecycleConfig('rmartz/firebase-nextjs-template')).toBeUndefined();
   });
 
   it('boots no sandbox for a run that never calls git', async () => {
