@@ -10,46 +10,21 @@ function makeRepos(
   return { 'rmartz/pr-lifecycle': prLifecycle === undefined ? {} : { prLifecycle } };
 }
 
-describe('toolConfig: the reviewed allowlist', () => {
-  it('reconciles the proof-of-concept repo live, with UAT on and arming off', () => {
-    expect(toolConfig('rmartz/firebase-nextjs-template', 'prLifecycle')).toEqual({
-      mode: 'live',
-      policy: { uat: 'on', armAutoMerge: false },
-    });
+describe('toolConfig: the reviewed allowlist (shelved)', () => {
+  it('leaves pr-lifecycle off on the template', () => {
+    expect(toolConfig('rmartz/firebase-nextjs-template', 'prLifecycle')).toBeUndefined();
   });
 
-  it('matches the repository name case-insensitively', () => {
-    expect(toolConfig('RMartz/Firebase-NextJS-Template', 'prLifecycle')?.mode).toBe('live');
+  it('leaves pr-policy off on the template', () => {
+    expect(toolConfig('rmartz/firebase-nextjs-template', 'prPolicy')).toBeUndefined();
   });
 
-  it('leaves every other repository disabled', () => {
-    expect(toolConfig('rmartz/personal-budget', 'prLifecycle')).toBeUndefined();
+  it('leaves merge-safety off on the template', () => {
+    expect(toolConfig('rmartz/firebase-nextjs-template', 'mergeSafety')).toBeUndefined();
   });
 
-  it("runs pr-policy live on the proof-of-concept repo with its workflow's inputs", () => {
-    expect(toolConfig('rmartz/firebase-nextjs-template', 'prPolicy')).toEqual({
-      mode: 'live',
-      policy: {
-        skipUat: false,
-        requireUatLabel: true,
-        retitleDependabotCi: true,
-        signOffStatusCreators: ['rmartz-pr-lifecycle[bot]'],
-      },
-    });
-  });
-
-  it('runs merge-safety live on the proof-of-concept repo with a bounded fan-out', () => {
-    expect(toolConfig('rmartz/firebase-nextjs-template', 'mergeSafety')).toEqual({
-      mode: 'live',
-      policy: { concurrency: 4 },
-    });
-  });
-
-  it('runs pr-lifecycle live on group-picks with arming and auto-update on', () => {
-    expect(toolConfig('rmartz/group-picks', 'prLifecycle')).toEqual({
-      mode: 'live',
-      policy: { uat: 'on', armAutoMerge: true, autoUpdate: true },
-    });
+  it('leaves pr-lifecycle off on group-picks', () => {
+    expect(toolConfig('rmartz/group-picks', 'prLifecycle')).toBeUndefined();
   });
 
   it('leaves pr-policy off on group-picks', () => {
@@ -60,8 +35,8 @@ describe('toolConfig: the reviewed allowlist', () => {
     expect(toolConfig('rmartz/group-picks', 'mergeSafety')).toBeUndefined();
   });
 
-  it('leaves pr-policy off on every other repository', () => {
-    expect(toolConfig('rmartz/personal-budget', 'prPolicy')).toBeUndefined();
+  it('leaves every other repository disabled', () => {
+    expect(toolConfig('rmartz/personal-budget', 'prLifecycle')).toBeUndefined();
   });
 });
 
@@ -80,6 +55,11 @@ describe('toolConfig: modes', () => {
       mode: 'live',
       policy: POLICY,
     });
+  });
+
+  it('matches the repository name case-insensitively', () => {
+    const repos = makeRepos({ mode: 'live', policy: POLICY });
+    expect(toolConfig('RMartz/PR-Lifecycle', 'prLifecycle', repos)?.mode).toBe('live');
   });
 
   it('treats an off entry as not enabled', () => {
