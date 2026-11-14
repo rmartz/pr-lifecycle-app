@@ -30,7 +30,7 @@ export interface ActiveToolConfig<Policy> {
  * so a PR can't switch off the gate it is waiting on.
  */
 export interface PrPolicyPolicy {
-  /** Drop the UAT gate, for a repo with nothing to user-test. */
+  /** Drop the UAT gate, for a repo that skips UAT by choice. */
   readonly skipUat: boolean;
   /** Hold a PR that carries no UAT label. */
   readonly requireUatLabel: boolean;

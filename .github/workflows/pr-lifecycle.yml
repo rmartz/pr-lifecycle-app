@@ -92,7 +92,8 @@ jobs:
           # the run reconciles labels only.
           app-client-id: ${{ secrets.PR_LIFECYCLE_CLIENT_ID }}
           app-private-key: ${{ secrets.PR_LIFECYCLE_PRIVATE_KEY }}
-          # Nothing here to user-test (see pr-policy.yml's skip-uat): every PR is
+          # UAT is off for this repo by choice; the service it ships is still
+          # user-facing (see pr-policy.yml's skip-uat): every PR is
           # `no UAT needed`. Quoted: YAML 1.1 reads a bare off as false.
           uat: 'off'
           arm-auto-merge: true
