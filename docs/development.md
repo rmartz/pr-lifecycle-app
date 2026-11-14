@@ -180,4 +180,7 @@ use `chore`. ESLint and Prettier, with their plugin families, share one `ci`
 group (pr-policy retitles it to `ci(deps…)`); TypeScript gets its own PR. Other
 patch and minor bumps are batched per dependency type for npm and in one group
 for Actions, so the reconciler can approve and arm them as eligible bot PRs.
-Every major gets its own PR for review.
+Every major gets its own PR for review, except `@types/node`: its majors are
+ignored because Dependabot can't move the Node runtime with them (the setup
+action's `node-version`, `engines` and the Vercel runtime). Bump the types major
+by hand in the same PR as the runtime upgrade.

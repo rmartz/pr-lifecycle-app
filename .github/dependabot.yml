@@ -29,6 +29,13 @@ updates:
       prefix: fix
       prefix-development: chore
       include: scope
+    ignore:
+      # @types/node tracks the Node runtime's major (setup action's node-version,
+      # `engines`, the Vercel runtime), none of which Dependabot updates. A lone
+      # types major would type-check APIs the runtime lacks, so it moves by hand
+      # with the runtime upgrade. Minors and patches still flow.
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
     groups:
       # CI-sensitive tools, always isolated: pr-policy's title check blocks any
       # eslint or prettier change unless the title type is `ci`, so they share one
